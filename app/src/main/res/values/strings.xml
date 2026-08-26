@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">TranslateApp</string>
+    <string name="hint_url">번역할 사이트 주소를 입력하세요</string>
+    <string name="btn_translate">번역하기</string>
+    <string name="btn_prev">◀ 이전</string>
+    <string name="btn_next">다음 ▶</string>
+</resources>
