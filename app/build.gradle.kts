@@ -12,8 +12,8 @@ android {
         applicationId = "com.senkiro.translateapp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "3.0"
     }
 
     // CI(GitHub Actions)에서 환경변수로 keystore 정보를 주입한다.
