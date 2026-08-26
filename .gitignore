@@ -8,3 +8,6 @@ captures/
 .externalNativeBuild/
 .cxx/
 app/build/
+*.keystore
+*.jks
+passwords.txt

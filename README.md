@@ -63,21 +63,48 @@ Play Store 없이도 앱 안에서 "업데이트 확인" 버튼으로 새 버전
 `update/AppUpdateChecker.kt`가 GitHub Releases API(`/releases/latest`)를 호출해
 현재 설치된 `versionCode`보다 새 버전이 있으면 APK를 다운로드하고 설치 화면을 띄운다.
 
-### 새 버전 배포 절차
+### 새 버전 배포 절차 (GitHub Actions 자동 빌드)
 
-1. `app/build.gradle.kts`에서 `versionCode`를 올리고 `versionName`도 갱신
-2. `./gradlew assembleRelease`로 서명된 APK 빌드
-3. GitHub Release 생성 — **태그 이름에 반드시 versionCode와 같은 숫자가 포함되어야 한다**
-   (예: versionCode 2라면 태그는 `v2` 또는 `2`)
-4. 빌드된 `.apk` 파일을 Release 에셋으로 첨부 (release 하나에 `.apk`는 하나만)
+`.github/workflows/release.yml`이 `v*` 형태의 태그가 push되면 자동으로
+release APK를 빌드하고 서명한 뒤 GitHub Release로 올린다. 로컬에 Android Studio가
+없어도 태그만 push하면 된다.
+
+1. `app/build.gradle.kts`에서 `versionCode`를 올리고 `versionName`도 갱신 후 커밋
+2. **태그 이름에 반드시 versionCode와 같은 숫자가 포함되어야 한다**
+   (예: versionCode 2라면 태그는 `v2`). 워크플로우가 이 일치 여부를 빌드 전에 검증하고,
+   틀리면 빌드를 실패시킨다.
+3. 태그를 push
 
 ```bash
-gh release create v2 app/build/outputs/apk/release/app-release.apk \
-  --title "v2" --notes "변경 내역"
+git tag v2
+git push origin v2
 ```
 
-이렇게 올리면 기존 v1 사용자가 앱에서 "업데이트 확인"을 누르는 순간 v2를 감지하고
+4. Actions 탭에서 빌드가 끝나면 Release가 자동 생성되고 APK가 첨부된다.
+
+이렇게 올리면 기존 사용자가 앱에서 "업데이트 확인"을 누르는 순간 새 버전을 감지하고
 다운로드/설치를 제안한다.
+
+### 최초 1회 설정 — release keystore를 GitHub Secrets에 등록
+
+서명 키가 버전마다 바뀌면 기존 앱 위에 업데이트 설치가 안 되므로(재설치 필요),
+keystore는 한 번 만들어서 계속 재사용해야 한다. 저장소 Settings → Secrets and variables →
+Actions에 아래 4개를 등록한다.
+
+| Secret 이름 | 값 |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | keystore 파일을 base64 인코딩한 문자열 |
+| `RELEASE_KEYSTORE_PASSWORD` | keystore 비밀번호 |
+| `RELEASE_KEY_ALIAS` | 키 별칭 |
+| `RELEASE_KEY_PASSWORD` | 키 비밀번호 (PKCS12는 keystore 비밀번호와 동일) |
+
+keystore 파일 자체와 비밀번호는 **절대 저장소에 커밋하지 않는다.** 로컬에서 새로 만들려면:
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -alias translateapp \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등록
+```
 
 ## 다음 확장 방향
 
