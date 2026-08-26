@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
@@ -13,7 +15,9 @@ import androidx.lifecycle.lifecycleScope
 import com.senkiro.translateapp.R
 import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.databinding.ActivityMainBinding
+import com.senkiro.translateapp.translation.LanguageOption
 import com.senkiro.translateapp.translation.MLKitTranslator
+import com.senkiro.translateapp.translation.SupportedLanguages
 import com.senkiro.translateapp.update.AppUpdateChecker
 import com.senkiro.translateapp.update.UpdateInfo
 import com.senkiro.translateapp.utils.Logger
@@ -37,10 +41,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var updateChecker: AppUpdateChecker
     private lateinit var pageTranslator: PageTranslator
 
-    // TODO: 언어 자동 감지 로직으로 교체 가능 (현재는 영→한 고정)
-    private val sourceLang = "en"
-    private val targetLang = "ko"
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
         updateChecker = AppUpdateChecker(applicationContext)
 
         setupWebView()
+        setupLanguageSpinners()
 
         binding.btnTranslate.setOnClickListener { loadFromInput() }
         binding.btnCheckUpdate.setOnClickListener { checkForUpdate() }
@@ -78,8 +79,8 @@ class MainActivity : AppCompatActivity() {
             engine = translator,
             cache = cache,
             scope = lifecycleScope,
-            sourceLang = sourceLang,
-            targetLang = targetLang,
+            sourceLang = SupportedLanguages.DEFAULT_SOURCE.code,
+            targetLang = SupportedLanguages.DEFAULT_TARGET.code,
             onStateChanged = { translating ->
                 binding.progressBar.visibility = if (translating) View.VISIBLE else View.GONE
             }
@@ -93,6 +94,45 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun setupLanguageSpinners() {
+        fun newAdapter() =
+            ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, SupportedLanguages.ALL).also {
+                it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+
+        binding.spinnerSourceLang.adapter = newAdapter()
+        binding.spinnerSourceLang.setSelection(SupportedLanguages.ALL.indexOf(SupportedLanguages.DEFAULT_SOURCE))
+
+        binding.spinnerTargetLang.adapter = newAdapter()
+        binding.spinnerTargetLang.setSelection(SupportedLanguages.ALL.indexOf(SupportedLanguages.DEFAULT_TARGET))
+
+        binding.spinnerSourceLang.onItemSelectedListener = languageSelectedListener { option ->
+            pageTranslator.sourceLang = option.code
+        }
+        binding.spinnerTargetLang.onItemSelectedListener = languageSelectedListener { option ->
+            pageTranslator.targetLang = option.code
+        }
+    }
+
+    private fun languageSelectedListener(onSelected: (LanguageOption) -> Unit) =
+        object : AdapterView.OnItemSelectedListener {
+            private var isFirstCall = true
+
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                onSelected(SupportedLanguages.ALL[position])
+                // 초기 setSelection() 호출로 인한 첫 콜백은 재번역을 트리거하지 않는다.
+                if (isFirstCall) {
+                    isFirstCall = false
+                    return
+                }
+                if (binding.webView.url != null) {
+                    pageTranslator.retranslateCurrentPage()
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
 
     private fun loadFromInput() {
         var url = binding.editUrl.text.toString().trim()

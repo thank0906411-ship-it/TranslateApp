@@ -29,6 +29,17 @@
 6. 사이트의 `<a>`, `<button>`, `<input>` 등은 전혀 건드리지 않으므로 클릭/입력이
    원본 사이트와 동일하게 동작하고, 새로 로드되는 페이지도 2번부터 다시 반복된다.
 
+## 언어 선택
+
+상단의 출발어/도착어 드롭다운(`spinnerSourceLang` / `spinnerTargetLang`)에서 언어 쌍을
+바꿀 수 있다. 지원 언어 목록은 `translation/SupportedLanguages.kt`에 정의되어 있고
+(한국어/영어/일본어/중국어/프랑스어/독일어/스페인어/러시아어/베트남어/태국어), ML Kit이
+지원하는 다른 언어를 추가하고 싶으면 이 파일에 `LanguageOption(표시이름, BCP-47 코드)`을
+추가하기만 하면 된다.
+
+언어를 바꾸면 현재 로드된 페이지를 새로고침해 원문부터 다시 가져와 새 언어 쌍으로
+재번역한다(`PageTranslator.retranslateCurrentPage()`). 기본값은 영어 → 한국어.
+
 ## 빌드 전 필요한 것
 
 1. JDK 17

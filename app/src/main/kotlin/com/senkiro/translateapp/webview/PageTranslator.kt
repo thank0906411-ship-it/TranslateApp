@@ -23,8 +23,8 @@ class PageTranslator(
     private val engine: TranslationEngine,
     private val cache: TranslationCache,
     private val scope: LifecycleCoroutineScope,
-    private val sourceLang: String,
-    private val targetLang: String,
+    var sourceLang: String,
+    var targetLang: String,
     private val onStateChanged: (translating: Boolean) -> Unit
 ) {
 
@@ -44,6 +44,15 @@ class PageTranslator(
     fun onPageLoaded() {
         val resetAndInject = "window.__translateAppInjected = false; $injectScript"
         webView.evaluateJavascript(resetAndInject, null)
+    }
+
+    /**
+     * 언어 선택이 바뀐 뒤 현재 페이지를 새 언어 쌍으로 다시 번역하고 싶을 때 호출한다.
+     * 원문은 이미 번역문으로 치환된 상태이므로, 페이지를 새로고침해 원문부터 다시 가져온 뒤
+     * onPageLoaded 경로를 그대로 태운다.
+     */
+    fun retranslateCurrentPage() {
+        webView.reload()
     }
 
     private inner class Bridge {
