@@ -52,7 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "translate_cache.db"
-                ).fallbackToDestructiveMigration(true).build().also { INSTANCE = it }
+                ).fallbackToDestructiveMigration().build().also { INSTANCE = it }
             }
         }
     }
