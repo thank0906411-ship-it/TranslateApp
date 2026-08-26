@@ -58,7 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
     }
 }
 
-/** 문장 단위 번역 캐시. WebView에서 뽑아낸 텍스트 노드마다 이걸 거쳐간다. */
+/** 문단/블록 단위 번역 캐시. WebView에서 뽑아낸 블록(p, li, h1~h6 등)마다 이걸 거쳐간다. */
 class TranslationCache(context: Context) {
 
     private val dao = AppDatabase.getInstance(context).translationDao()

@@ -14,9 +14,12 @@ import org.json.JSONObject
 
 /**
  * WebView가 페이지를 다 불러오면(onPageFinished) inline_translate.js를 주입해
- * 텍스트 노드 목록을 받아온 뒤(JS -> onTextsCollected), 번역해서 다시 그 자리에
- * 심어 넣는다(Kotlin -> tappApplyTranslations). 사이트의 링크/버튼/입력폼은
- * 전혀 건드리지 않으므로 사용자는 원래 사이트처럼 클릭해서 페이지를 넘길 수 있다.
+ * 블록(p, li, h1~h6 등) 단위 텍스트 목록을 받아온 뒤(JS -> onTextsCollected),
+ * 각 블록 전체를 문맥 있게 번역해서 다시 그 자리에 심어 넣는다(Kotlin -> tappApplyTranslations).
+ * 텍스트 노드 하나하나가 아니라 블록 전체를 번역 단위로 삼는 이유는, 문장이 <b>/<a> 같은
+ * 인라인 태그로 쪼개져 있을 때 조각마다 따로 번역하면 문맥이 끊겨 품질이 떨어지기 때문이다.
+ * 사이트의 링크/버튼/입력폼은 전혀 건드리지 않으므로 사용자는 원래 사이트처럼 클릭해서
+ * 페이지를 넘길 수 있다.
  */
 class PageTranslator(
     private val webView: WebView,
