@@ -1,30 +1,33 @@
 # TranslateApp
 
-사이트 링크를 입력하면 본문 텍스트를 오프라인으로 번역해주는 개인용 Android 앱.
+사이트 링크를 입력하면 WebView로 실제 사이트를 그대로 띄우고, 화면 안의 텍스트만
+온디바이스로 인라인 번역해주는 개인용 Android 앱. 사이트 안의 링크/버튼/입력폼은
+그대로 동작하므로, 원본 사이트를 쓰듯 클릭해서 페이지를 넘기면 새 페이지도 자동으로
+다시 번역된다.
 
 ## 아키텍처
 
-- `data/network` — URL → HTML 원문 다운로드 (OkHttp)
-- `data/parser` — HTML → 순수 텍스트(문단 단위) 추출 (Jsoup)
-- `data/model` — 데이터 클래스
+- `webview` — `PageTranslator`: WebView가 페이지 로드를 마칠 때마다(`onPageFinished`)
+  `assets/inline_translate.js`를 주입해 텍스트 노드를 수집하고, 번역 결과를 같은 자리에
+  다시 심어 넣는다(JS `JavascriptInterface` 브리지로 Kotlin ↔ JS 통신).
 - `translation` — 번역 엔진 인터페이스 + ML Kit 구현체 (온디바이스, 오프라인)
-- `cache` — Room DB 기반 번역 결과 캐싱 (같은 URL 재번역 방지)
-- `ui` — MainActivity (URL 입력 + 결과 표시 + 다음/이전 탐색, MVP 단계는 단일 화면)
-- `utils` — 로깅, 파일 경로 유틸
-- `test` — 번역 품질 휴리스틱 점검 (TranslationEvaluator, ConsistencyChecker)
+- `cache` — Room DB 기반 번역 결과 캐싱. **문장 단위**로 캐싱하므로 같은 문구가
+  여러 페이지에 반복돼도(메뉴, 공통 문구 등) 재번역하지 않는다.
+- `ui` — MainActivity (URL 입력 + WebView + 업데이트 확인, 단일 화면)
+- `update` — GitHub Releases 기반 앱 내 업데이트 확인/다운로드/설치
+- `utils` — 로깅
 
-## 다음/이전 탐색 기능
+## 인라인 번역 동작 방식
 
-브라우저의 뒤로/앞으로 가기와 비슷하게 동작합니다.
-
-- **이전**: 항상 앱 안에 저장된 방문 기록에서 즉시 불러옵니다. 네트워크를 다시 타지 않아 빠릅니다.
-- **다음**: 이미 가본 적 있는 다음 기록이 있으면 그쪽을 먼저 보여주고, 방문 기록의 맨 끝이면
-  현재 페이지 HTML에서 `HtmlTextExtractor.findNextPageUrl()`로 실제 "다음 화/다음 페이지" 링크를
-  찾아 자동으로 이동+번역합니다. `rel="next"`가 있는 사이트는 정확히 잡히고, 없는 사이트는
-  "다음", "next", "›" 같은 텍스트를 가진 링크를 휴리스틱으로 찾으므로 사이트에 따라 실패할 수
-  있습니다 — 실패하면 토스트로 알려줍니다.
-- 방문 중 "이전"으로 되돌아간 뒤 새 URL을 입력하거나 다른 다음 링크로 이동하면, 그 이후의
-  기존 기록은 잘라내고 새 기록으로 갈라집니다 (일반 브라우저와 동일한 동작).
+1. 사용자가 URL을 입력하거나 사이트 안의 링크를 클릭하면 WebView가 해당 페이지를 로드
+2. `onPageFinished`에서 `PageTranslator.onPageLoaded()`가 `inline_translate.js`를 주입
+3. JS가 `document.body`의 텍스트 노드를 순회해 각 노드에 `data-tapp-id`를 부여하고,
+   `{id, text}` 목록을 JSON으로 Kotlin에 전달 (`TranslateAppBridge.onTextsCollected`)
+4. Kotlin이 문장 단위 캐시를 확인하고, 없으면 ML Kit로 번역 후 캐시에 저장
+5. 번역 결과를 `{id: 번역문}` 형태로 JS에 다시 넘기면, JS가 저장해둔 텍스트 노드
+   참조(`__tappNodeRefs`)를 통해 정확히 그 자리에서 원문을 번역문으로 치환
+6. 사이트의 `<a>`, `<button>`, `<input>` 등은 전혀 건드리지 않으므로 클릭/입력이
+   원본 사이트와 동일하게 동작하고, 새로 로드되는 페이지도 2번부터 다시 반복된다.
 
 ## 빌드 전 필요한 것
 
@@ -110,4 +113,6 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
 
 - 언어 자동 감지 (현재는 en→ko 고정)
 - ML Kit → NLLB-200 등 커스텀 온디바이스 모델로 교체 (translation/ 폴더에 새 구현체만 추가하면 됨)
-- UI를 Fragment 단위(UrlInputScreen / ResultScreen)로 분리
+- 텍스트가 늦게 로드되는 SPA/무한스크롤 사이트 대응 (MutationObserver로 새로 추가되는
+  텍스트 노드도 감지해 번역하는 방식으로 `inline_translate.js` 확장)
+- 번역 중 원문이 잠깐 보이는 깜빡임(FOUC) 완화 (예: 번역 전 텍스트 살짝 흐리게 표시)

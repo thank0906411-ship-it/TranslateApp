@@ -11,10 +11,14 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
+/**
+ * 원문 문장 하나 단위로 캐싱한다 (URL 단위가 아님).
+ * 같은 문장이 여러 페이지에 반복 등장하는 사이트(메뉴, 공통 문구 등)에서
+ * 재번역을 피할 수 있고, 페이지 구조가 조금 바뀌어도 캐시가 계속 유효하다.
+ */
 @Entity(tableName = "translation_cache")
 data class TranslationEntity(
-    @PrimaryKey val urlHash: String,
-    val sourceUrl: String,
+    @PrimaryKey val textHash: String,
     val sourceLang: String,
     val targetLang: String,
     val originalText: String,
@@ -25,8 +29,8 @@ data class TranslationEntity(
 @Dao
 interface TranslationDao {
 
-    @Query("SELECT * FROM translation_cache WHERE urlHash = :urlHash LIMIT 1")
-    suspend fun find(urlHash: String): TranslationEntity?
+    @Query("SELECT * FROM translation_cache WHERE textHash = :textHash LIMIT 1")
+    suspend fun find(textHash: String): TranslationEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: TranslationEntity)
@@ -35,7 +39,7 @@ interface TranslationDao {
     suspend fun deleteOlderThan(beforeTimestamp: Long)
 }
 
-@Database(entities = [TranslationEntity::class], version = 1, exportSchema = false)
+@Database(entities = [TranslationEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun translationDao(): TranslationDao
 
@@ -48,45 +52,35 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "translate_cache.db"
-                ).build().also { INSTANCE = it }
+                ).fallbackToDestructiveMigration(true).build().also { INSTANCE = it }
             }
         }
     }
 }
 
-/**
- * 같은 URL을 반복 번역하지 않도록 캐싱을 담당하는 리포지토리 계층.
- * MainActivity/ViewModel은 이 클래스만 알면 되고, Room 세부사항은 몰라도 된다.
- */
+/** 문장 단위 번역 캐시. WebView에서 뽑아낸 텍스트 노드마다 이걸 거쳐간다. */
 class TranslationCache(context: Context) {
 
     private val dao = AppDatabase.getInstance(context).translationDao()
 
-    suspend fun get(url: String, sourceLang: String, targetLang: String): TranslationEntity? {
-        return dao.find(makeHash(url, sourceLang, targetLang))
+    suspend fun get(text: String, sourceLang: String, targetLang: String): String? {
+        return dao.find(makeHash(text, sourceLang, targetLang))?.translatedText
     }
 
-    suspend fun put(
-        url: String,
-        sourceLang: String,
-        targetLang: String,
-        originalText: String,
-        translatedText: String
-    ) {
+    suspend fun put(text: String, sourceLang: String, targetLang: String, translatedText: String) {
         dao.insert(
             TranslationEntity(
-                urlHash = makeHash(url, sourceLang, targetLang),
-                sourceUrl = url,
+                textHash = makeHash(text, sourceLang, targetLang),
                 sourceLang = sourceLang,
                 targetLang = targetLang,
-                originalText = originalText,
+                originalText = text,
                 translatedText = translatedText,
                 timestamp = System.currentTimeMillis()
             )
         )
     }
 
-    private fun makeHash(url: String, sourceLang: String, targetLang: String): String {
-        return "$url|$sourceLang|$targetLang".hashCode().toString()
+    private fun makeHash(text: String, sourceLang: String, targetLang: String): String {
+        return "$text|$sourceLang|$targetLang".hashCode().toString()
     }
 }
