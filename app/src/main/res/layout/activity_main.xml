@@ -32,6 +32,14 @@
             android:layout_height="wrap_content"
             android:layout_weight="1" />
 
+        <Button
+            android:id="@+id/btnCheckUpdate"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_check_update"
+            android:textSize="11sp" />
+
     </LinearLayout>
 
     <LinearLayout
@@ -72,14 +80,5 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
-
-    <Button
-        android:id="@+id/btnCheckUpdate"
-        style="?android:attr/borderlessButtonStyle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="end"
-        android:text="@string/btn_check_update"
-        android:textSize="12sp" />
 
 </LinearLayout>
