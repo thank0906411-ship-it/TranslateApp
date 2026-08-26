@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -8,12 +10,23 @@ android {
     namespace = "com.senkiro.translateapp"
     compileSdk = 34
 
+    // local.properties에 GOOGLE_TRANSLATE_API_KEY=본인키 를 넣으면 로컬 빌드에서만
+    // Google Cloud Translation을 쓴다. CI(GitHub Actions)로 배포되는 공개 APK에는
+    // 이 파일이 없으므로 빈 값으로 빌드되고, 앱은 자동으로 ML Kit 온디바이스 번역으로
+    // 폴백한다 (GoogleTranslateEngine 참고).
+    val localProps = Properties().apply {
+        val file = rootProject.file("local.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
+    val googleTranslateApiKey = localProps.getProperty("GOOGLE_TRANSLATE_API_KEY", "")
+
     defaultConfig {
         applicationId = "com.senkiro.translateapp"
         minSdk = 26
         targetSdk = 34
         versionCode = 5
         versionName = "5.0"
+        buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"$googleTranslateApiKey\"")
     }
 
     // CI(GitHub Actions)에서 환경변수로 keystore 정보를 주입한다.
@@ -54,6 +67,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 
@@ -63,7 +77,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // 네트워킹 (GitHub Releases API 호출용)
+    // 네트워킹 (GitHub Releases API, Google Cloud Translation API 호출용)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // 코루틴

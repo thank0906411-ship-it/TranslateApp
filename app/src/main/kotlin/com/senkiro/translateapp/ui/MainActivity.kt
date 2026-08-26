@@ -15,6 +15,8 @@ import androidx.lifecycle.lifecycleScope
 import com.senkiro.translateapp.R
 import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.databinding.ActivityMainBinding
+import com.senkiro.translateapp.translation.FallbackTranslator
+import com.senkiro.translateapp.translation.GoogleTranslateEngine
 import com.senkiro.translateapp.translation.LanguageOption
 import com.senkiro.translateapp.translation.MLKitTranslator
 import com.senkiro.translateapp.translation.SupportedLanguages
@@ -36,7 +38,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
-    private val translator = MLKitTranslator()
+    private val translator = FallbackTranslator(GoogleTranslateEngine(), MLKitTranslator())
     private lateinit var cache: TranslationCache
     private lateinit var updateChecker: AppUpdateChecker
     private lateinit var pageTranslator: PageTranslator

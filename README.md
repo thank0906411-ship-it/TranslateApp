@@ -10,7 +10,13 @@
 - `webview` — `PageTranslator`: WebView가 페이지 로드를 마칠 때마다(`onPageFinished`)
   `assets/inline_translate.js`를 주입해 블록 단위 텍스트를 수집하고, 번역 결과를 같은
   자리에 다시 심어 넣는다(JS `JavascriptInterface` 브리지로 Kotlin ↔ JS 통신).
-- `translation` — 번역 엔진 인터페이스 + ML Kit 구현체 (온디바이스, 오프라인)
+- `translation` — 번역 엔진 인터페이스. 두 구현체가 있다:
+  - `MLKitTranslator` — Google ML Kit 온디바이스 번역 (완전 오프라인, 무료, 항상 동작)
+  - `GoogleTranslateEngine` — Google Cloud Translation API (서버급 신경망 모델이라
+    훨씬 자연스럽지만 API 키와 인터넷 필요)
+  - `FallbackTranslator` — 위 둘을 감싸서, API 키가 설정되어 있으면 Cloud Translation을
+    먼저 쓰고 키가 없거나 호출이 실패하면 자동으로 ML Kit으로 전환한다. MainActivity는
+    이 클래스만 `TranslationEngine`으로 사용하므로 어느 엔진이 실제로 쓰였는지 신경 쓸 필요 없다.
 - `cache` — Room DB 기반 번역 결과 캐싱. **블록(문단) 단위**로 캐싱하므로 같은 문구가
   여러 페이지에 반복돼도(메뉴, 공통 문구 등) 재번역하지 않는다.
 - `ui` — MainActivity (URL 입력 + WebView + 업데이트 확인, 단일 화면)
@@ -45,6 +51,24 @@
 
 언어를 바꾸면 현재 로드된 페이지를 새로고침해 원문부터 다시 가져와 새 언어 쌍으로
 재번역한다(`PageTranslator.retranslateCurrentPage()`). 기본값은 영어 → 한국어.
+
+## 번역 품질 높이기 (Google Cloud Translation, 선택)
+
+기본값인 ML Kit 온디바이스 번역은 무료·오프라인이지만 문장이 길어지면 직역/의역이
+뒤섞여 다소 부자연스러울 수 있다. `local.properties`에 아래 한 줄을 추가하면 그 대신
+Google Cloud Translation API(구글 번역과 같은 계열의 서버급 모델)를 쓴다.
+
+```properties
+GOOGLE_TRANSLATE_API_KEY=본인의_API_키
+```
+
+- 키 발급: https://console.cloud.google.com 에서 프로젝트를 만들고 "Cloud Translation
+  API"를 활성화한 뒤 사용자 인증 정보에서 API 키 생성. 월 50만 자까지 무료, 이후 과금.
+- `local.properties`는 `.gitignore`에 이미 포함되어 있어 커밋되지 않는다.
+- **이 키를 넣지 않고 로컬에서 빌드하거나, GitHub Actions로 자동 배포되는 공개
+  릴리즈 APK를 그대로 쓰면** 이 파일 자체가 CI에 없으므로 키가 빈 값으로 빌드되고,
+  앱은 자동으로 ML Kit 온디바이스 번역으로 동작한다 (`FallbackTranslator`가 처리).
+  즉 키를 설정하는 건 순전히 선택 사항이며, 설정한 사람만 더 자연스러운 번역을 얻는다.
 
 ## 빌드 전 필요한 것
 
