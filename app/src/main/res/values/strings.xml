@@ -4,4 +4,12 @@
     <string name="btn_translate">번역하기</string>
     <string name="btn_prev">◀ 이전</string>
     <string name="btn_next">다음 ▶</string>
+    <string name="btn_check_update">업데이트 확인</string>
+    <string name="update_checking">업데이트 확인 중…</string>
+    <string name="update_none">이미 최신 버전입니다.</string>
+    <string name="update_check_failed">업데이트 확인 실패: %1$s</string>
+    <string name="update_available_title">새 버전 %1$s</string>
+    <string name="update_download_btn">다운로드 후 설치</string>
+    <string name="update_cancel_btn">취소</string>
+    <string name="update_downloading">다운로드를 시작했습니다. 완료되면 설치 화면이 뜹니다.</string>
 </resources>

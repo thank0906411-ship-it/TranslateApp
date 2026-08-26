@@ -57,6 +57,28 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 서명된 APK가 `app/build/outputs/apk/release/`에 생성됩니다. (이 템플릿에는
 개인 keystore가 없으므로 signingConfig는 직접 추가해야 합니다.)
 
+## 앱 내 업데이트(GitHub Releases 기반)
+
+Play Store 없이도 앱 안에서 "업데이트 확인" 버튼으로 새 버전을 받을 수 있다.
+`update/AppUpdateChecker.kt`가 GitHub Releases API(`/releases/latest`)를 호출해
+현재 설치된 `versionCode`보다 새 버전이 있으면 APK를 다운로드하고 설치 화면을 띄운다.
+
+### 새 버전 배포 절차
+
+1. `app/build.gradle.kts`에서 `versionCode`를 올리고 `versionName`도 갱신
+2. `./gradlew assembleRelease`로 서명된 APK 빌드
+3. GitHub Release 생성 — **태그 이름에 반드시 versionCode와 같은 숫자가 포함되어야 한다**
+   (예: versionCode 2라면 태그는 `v2` 또는 `2`)
+4. 빌드된 `.apk` 파일을 Release 에셋으로 첨부 (release 하나에 `.apk`는 하나만)
+
+```bash
+gh release create v2 app/build/outputs/apk/release/app-release.apk \
+  --title "v2" --notes "변경 내역"
+```
+
+이렇게 올리면 기존 v1 사용자가 앱에서 "업데이트 확인"을 누르는 순간 v2를 감지하고
+다운로드/설치를 제안한다.
+
 ## 다음 확장 방향
 
 - 언어 자동 감지 (현재는 en→ko 고정)

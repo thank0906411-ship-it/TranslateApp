@@ -4,13 +4,17 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.senkiro.translateapp.R
 import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.data.network.HtmlFetcher
 import com.senkiro.translateapp.data.parser.HtmlTextExtractor
 import com.senkiro.translateapp.databinding.ActivityMainBinding
 import com.senkiro.translateapp.translation.MLKitTranslator
+import com.senkiro.translateapp.update.AppUpdateChecker
+import com.senkiro.translateapp.update.UpdateInfo
 import com.senkiro.translateapp.utils.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private val extractor = HtmlTextExtractor()
     private val translator = MLKitTranslator()
     private lateinit var cache: TranslationCache
+    private lateinit var updateChecker: AppUpdateChecker
 
     // TODO: 언어 자동 감지 로직으로 교체 가능 (현재는 영→한 고정)
     private val sourceLang = "en"
@@ -50,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         cache = TranslationCache(applicationContext)
+        updateChecker = AppUpdateChecker(applicationContext)
 
         binding.btnTranslate.setOnClickListener {
             val url = binding.editUrl.text.toString().trim()
@@ -61,8 +67,46 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnPrev.setOnClickListener { goPrev() }
         binding.btnNext.setOnClickListener { goNext() }
+        binding.btnCheckUpdate.setOnClickListener { checkForUpdate() }
 
         handleShareIntent(intent)
+    }
+
+    /** GitHub Releases의 최신 릴리스를 확인하고, 새 버전이 있으면 다운로드/설치를 제안한다. */
+    private fun checkForUpdate() {
+        Toast.makeText(this, getString(R.string.update_checking), Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch {
+            try {
+                val update = withContext(Dispatchers.IO) { updateChecker.fetchLatestRelease() }
+
+                if (!updateChecker.isNewerThanCurrent(update)) {
+                    Toast.makeText(this@MainActivity, getString(R.string.update_none), Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                showUpdateDialog(update)
+            } catch (e: Exception) {
+                Logger.e("업데이트 확인 실패", e)
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.update_check_failed, e.message ?: ""),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun showUpdateDialog(update: UpdateInfo) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.update_available_title, update.versionName))
+            .setMessage(update.releaseNotes.ifBlank { null })
+            .setPositiveButton(getString(R.string.update_download_btn)) { _, _ ->
+                updateChecker.downloadAndInstall(update)
+                Toast.makeText(this, getString(R.string.update_downloading), Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton(getString(R.string.update_cancel_btn), null)
+            .show()
     }
 
     /** 다른 앱에서 '공유하기'로 URL을 받은 경우 자동으로 입력창을 채우고 번역 시작 */
