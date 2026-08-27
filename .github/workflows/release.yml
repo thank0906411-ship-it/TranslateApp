@@ -34,6 +34,12 @@ jobs:
           echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
           echo "RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
+      - name: Write local.properties with API keys
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          echo "GOOGLE_TRANSLATE_API_KEY=${{ secrets.GOOGLE_TRANSLATE_API_KEY }}" >> local.properties
+          echo "UPDATE_CHECK_PAT=${{ secrets.UPDATE_CHECK_PAT }}" >> local.properties
+
       - name: Verify tag matches versionCode
         run: |
           TAG_DIGITS=$(echo "${GITHUB_REF_NAME}" | tr -dc '0-9')

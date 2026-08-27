@@ -10,23 +10,26 @@ android {
     namespace = "com.senkiro.translateapp"
     compileSdk = 34
 
-    // local.properties에 GOOGLE_TRANSLATE_API_KEY=본인키 를 넣으면 로컬 빌드에서만
-    // Google Cloud Translation을 쓴다. CI(GitHub Actions)로 배포되는 공개 APK에는
-    // 이 파일이 없으므로 빈 값으로 빌드되고, 앱은 자동으로 ML Kit 온디바이스 번역으로
-    // 폴백한다 (GoogleTranslateEngine 참고).
+    // local.properties에 GOOGLE_TRANSLATE_API_KEY / UPDATE_CHECK_PAT를 넣으면 로컬 빌드에
+    // 반영된다. CI(GitHub Actions)에서는 release.yml이 이 파일을 Secrets로 직접 생성한다.
+    // GOOGLE_TRANSLATE_API_KEY가 없으면 앱은 자동으로 ML Kit 온디바이스 번역으로
+    // 폴백한다 (GoogleTranslateEngine 참고). 이 repo는 private이므로 UPDATE_CHECK_PAT는
+    // 필수다 (없으면 업데이트 확인 API 호출이 401로 실패한다).
     val localProps = Properties().apply {
         val file = rootProject.file("local.properties")
         if (file.exists()) file.inputStream().use { load(it) }
     }
     val googleTranslateApiKey = localProps.getProperty("GOOGLE_TRANSLATE_API_KEY", "")
+    val githubUpdatePat = localProps.getProperty("UPDATE_CHECK_PAT", "")
 
     defaultConfig {
         applicationId = "com.senkiro.translateapp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "5.0"
+        versionCode = 6
+        versionName = "6.0"
         buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"$googleTranslateApiKey\"")
+        buildConfigField("String", "GITHUB_UPDATE_PAT", "\"$githubUpdatePat\"")
     }
 
     // CI(GitHub Actions)에서 환경변수로 keystore 정보를 주입한다.

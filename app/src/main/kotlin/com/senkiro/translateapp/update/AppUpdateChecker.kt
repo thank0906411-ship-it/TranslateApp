@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import androidx.core.content.FileProvider
+import com.senkiro.translateapp.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -19,6 +20,11 @@ import java.io.IOException
  * GitHub Releases API로 최신 릴리스를 확인하고, 새 버전이면 APK를 다운로드해
  * 시스템 설치 화면을 띄운다. 별도 서버 없이 GitHub Releases만으로 동작한다.
  *
+ * 이 repo는 private이므로 모든 요청에 읽기 전용 PAT(BuildConfig.GITHUB_UPDATE_PAT,
+ * local.properties의 UPDATE_CHECK_PAT에서 주입됨)로 인증한다. asset 다운로드는
+ * browser_download_url이 아니라 API의 asset URL을 Accept: application/octet-stream으로
+ * 호출해야 private repo에서도 받아진다.
+ *
  * 요구사항:
  *  - GitHub Release의 태그 이름(tag_name)이 버전 코드 숫자를 포함해야 한다. (예: "v3" 또는 "3")
  *  - Release의 에셋(assets) 중 ".apk"로 끝나는 파일이 정확히 하나 있어야 한다.
@@ -28,16 +34,19 @@ class AppUpdateChecker(private val context: Context) {
     private val client = OkHttpClient.Builder().build()
 
     companion object {
-        // "owner/repo" 형식. GitHub public repo이므로 인증 토큰 불필요.
+        // "owner/repo" 형식.
         private const val GITHUB_REPO = "thank0906411-ship-it/TranslateApp"
         private const val API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
     }
+
+    private fun authHeader() = "Bearer ${BuildConfig.GITHUB_UPDATE_PAT}"
 
     @Throws(IOException::class)
     fun fetchLatestRelease(): UpdateInfo {
         val request = Request.Builder()
             .url(API_URL)
             .header("Accept", "application/vnd.github+json")
+            .header("Authorization", authHeader())
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -56,16 +65,18 @@ class AppUpdateChecker(private val context: Context) {
             ?: throw IOException("태그 이름에서 버전 코드를 읽지 못했습니다: $tagName")
 
         val assets = json.getJSONArray("assets")
-        var apkUrl: String? = null
+        // private repo의 asset은 browser_download_url이 아니라 API asset URL(url 필드)을
+        // Accept: application/octet-stream + 인증 헤더로 호출해야 다운로드된다.
+        var apkApiUrl: String? = null
         for (i in 0 until assets.length()) {
             val asset = assets.getJSONObject(i)
             val name = asset.getString("name")
             if (name.endsWith(".apk")) {
-                apkUrl = asset.getString("browser_download_url")
+                apkApiUrl = asset.getString("url")
                 break
             }
         }
-        val downloadUrl = apkUrl ?: throw IOException("릴리스에 APK 파일이 없습니다.")
+        val downloadUrl = apkApiUrl ?: throw IOException("릴리스에 APK 파일이 없습니다.")
 
         return UpdateInfo(
             versionName = tagName,
@@ -100,6 +111,8 @@ class AppUpdateChecker(private val context: Context) {
             .setTitle("TranslateApp 업데이트")
             .setDestinationUri(Uri.fromFile(destFile))
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .addRequestHeader("Authorization", authHeader())
+            .addRequestHeader("Accept", "application/octet-stream")
 
         val downloadId = downloadManager.enqueue(request)
 

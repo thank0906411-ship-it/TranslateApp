@@ -107,6 +107,13 @@ Play Store 없이도 앱 안에서 "업데이트 확인" 버튼으로 새 버전
 `update/AppUpdateChecker.kt`가 GitHub Releases API(`/releases/latest`)를 호출해
 현재 설치된 `versionCode`보다 새 버전이 있으면 APK를 다운로드하고 설치 화면을 띄운다.
 
+**이 repo는 private이다.** Google Cloud Translation API 키가 포함된 release APK를
+공개 배포하면 키가 디컴파일로 노출되어 도용될 수 있기 때문이다. private repo이므로
+모든 API 요청에 읽기 전용 fine-grained PAT(`BuildConfig.GITHUB_UPDATE_PAT`, contents:
+read-only, 이 repo 하나만 접근 가능하게 발급)로 인증하며, asset 다운로드도
+`browser_download_url`이 아니라 API의 asset URL을 `Accept: application/octet-stream` +
+인증 헤더로 호출한다(private repo에서는 그렇게 해야만 받아진다).
+
 ### 새 버전 배포 절차 (GitHub Actions 자동 빌드)
 
 `.github/workflows/release.yml`이 `v*` 형태의 태그가 push되면 자동으로
@@ -141,6 +148,11 @@ Actions에 아래 4개를 등록한다.
 | `RELEASE_KEYSTORE_PASSWORD` | keystore 비밀번호 |
 | `RELEASE_KEY_ALIAS` | 키 별칭 |
 | `RELEASE_KEY_PASSWORD` | 키 비밀번호 (PKCS12는 keystore 비밀번호와 동일) |
+| `GOOGLE_TRANSLATE_API_KEY` | Google Cloud Translation API 키 (선택, 없으면 ML Kit으로 폴백) |
+| `UPDATE_CHECK_PAT` | 이 repo 하나만 접근 가능한 읽기 전용 fine-grained PAT (필수 — private repo이므로 없으면 앱 내 업데이트 확인이 401로 실패) |
+
+로컬 빌드 시에는 `local.properties`에 같은 이름(`GOOGLE_TRANSLATE_API_KEY`,
+`UPDATE_CHECK_PAT`)으로 넣으면 된다. 둘 다 `.gitignore`에 걸려 있어 커밋되지 않는다.
 
 keystore 파일 자체와 비밀번호는 **절대 저장소에 커밋하지 않는다.** 로컬에서 새로 만들려면:
 
