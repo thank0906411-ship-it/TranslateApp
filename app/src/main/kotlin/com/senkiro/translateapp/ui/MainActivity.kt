@@ -28,6 +28,7 @@ import com.senkiro.translateapp.update.AppUpdateChecker
 import com.senkiro.translateapp.update.UpdateInfo
 import com.senkiro.translateapp.utils.Logger
 import com.senkiro.translateapp.webview.PageTranslator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -254,6 +255,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 showUpdateDialog(update)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.e("업데이트 확인 실패", e)
                 if (!silent) {

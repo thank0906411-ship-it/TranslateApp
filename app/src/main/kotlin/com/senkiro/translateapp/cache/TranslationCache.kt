@@ -10,6 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import java.security.MessageDigest
 import java.text.Normalizer
 import java.util.concurrent.TimeUnit
 
@@ -44,7 +45,7 @@ interface TranslationDao {
 // 캐시 키 해싱 방식이 바뀔 때마다(예: 텍스트 정규화 도입) 버전을 올려 기존 캐시를
 // destructiveMigration으로 정리한다 — 옛 방식으로 만들어진 해시가 새 방식과 안 맞아
 // 캐시 미스만 계속 나는 것보다, 한 번 비우고 새로 쌓는 게 낫다.
-@Database(entities = [TranslationEntity::class], version = 3, exportSchema = false)
+@Database(entities = [TranslationEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun translationDao(): TranslationDao
 
@@ -102,8 +103,15 @@ class TranslationCache(context: Context) {
             .replace(Regex("\\s+"), " ")
     }
 
+    /**
+     * String.hashCode()는 32비트 다항식 해시라 서로 다른 문장이 같은 값을 낼 수 있다
+     * (충돌 시 완전히 다른 두 문장이 같은 캐시 항목을 공유해 엉뚱한 번역이 나올 수 있음).
+     * SHA-256으로 캐시 키를 만들어 충돌 확률을 실질적으로 0에 가깝게 만든다.
+     */
     private fun makeHash(text: String, sourceLang: String, targetLang: String): String {
-        return "${normalize(text)}|$sourceLang|$targetLang".hashCode().toString()
+        val input = "${normalize(text)}|$sourceLang|$targetLang"
+        val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     companion object {

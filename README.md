@@ -259,6 +259,18 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
   이 API는 root 자신은 검사하지 않고 자손만 훑는다. SPA가 `<p>새 문단</p>`처럼
   블록 요소 자체를 통째로 DOM에 추가하는 경우 그 블록이 후보에서 빠져 번역되지
   않는 문제가 있어, root가 블록 셀렉터에 매칭되면 후보 목록에 root 자신도 포함하도록 수정.
+- **코루틴 취소가 일반 오류로 삼켜지던 문제**: `GoogleTranslateEngine`/`PageTranslator`/
+  `MainActivity`의 여러 곳에서 `catch (e: Exception)`이 `CancellationException`까지
+  잡아버려, 페이지 전환이나 Activity 소멸로 코루틴이 취소돼도 계속 진행되거나
+  불필요한 폴백/Toast가 시도될 수 있었다. `CancellationException`을 먼저 잡아
+  그대로 다시 던지도록 각 위치에 전용 catch 절을 추가.
+- **Claude/GPT 후처리 프롬프트 코드 중복 제거**: 두 파일에 완전히 동일한 프롬프트
+  생성 로직이 복사되어 있어 한쪽만 수정하고 다른 쪽을 놓칠 위험이 있었다.
+  `LlmPostProcessor.kt`의 공통 함수(`buildRefinementPrompt`)로 통합.
+- **캐시 키 해시 충돌 가능성**: `TranslationCache`가 `String.hashCode()`(32비트
+  다항식 해시, 충돌 가능)를 캐시 키로 썼다. 충돌이 나면 서로 다른 두 문장이 같은
+  캐시 항목을 공유해 완전히 엉뚱한 번역 결과가 나올 수 있어, SHA-256으로 교체해
+  충돌 확률을 실질적으로 없앴다(해싱 방식 변경으로 DB 버전 상향, 기존 캐시 초기화).
 
 ## 다음 확장 방향
 

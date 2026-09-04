@@ -9,6 +9,7 @@ import com.senkiro.translateapp.glossary.GlossaryApplier
 import com.senkiro.translateapp.translation.LlmPostProcessor
 import com.senkiro.translateapp.translation.TranslationEngine
 import com.senkiro.translateapp.utils.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -143,6 +144,8 @@ class PageTranslator(
                         val translated = ids.map { postProcessTargets.getValue(it).second }
                         val refined = llmPostProcessor.refine(originals, translated, targetLang)
                         ids.forEachIndexed { index, id -> idToTranslated[id] = refined[index] }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Logger.e("LLM 후처리 실패, 1차 번역 결과를 그대로 사용", e)
                     }
@@ -156,6 +159,8 @@ class PageTranslator(
                 val script = "window.tappApplyTranslations(${JSONObject.quote(result.toString())})"
                 webView.evaluateJavascript(script, null)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e("페이지 인라인 번역 실패", e)
         } finally {

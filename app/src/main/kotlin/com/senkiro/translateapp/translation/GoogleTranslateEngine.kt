@@ -2,6 +2,7 @@ package com.senkiro.translateapp.translation
 
 import com.senkiro.translateapp.BuildConfig
 import com.senkiro.translateapp.utils.Logger
+import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -115,6 +116,11 @@ class FallbackTranslator(
         if (usePrimary()) {
             try {
                 return primary.translate(text, sourceLang, targetLang)
+            } catch (e: CancellationException) {
+                // 코루틴 취소는 폴백 대상이 아니라 그대로 전파해야 한다. 여기서 잡아
+                // ML Kit으로 계속 진행하면 이미 취소된 작업(예: 페이지 이동으로 번역
+                // 요청이 무의미해진 경우)이 불필요하게 계속 실행되는 문제가 생긴다.
+                throw e
             } catch (e: Exception) {
                 Logger.e("Cloud Translation 실패, ML Kit으로 폴백", e)
                 if (e is GoogleTranslateException.QuotaExceeded || e is GoogleTranslateException.Forbidden) {
