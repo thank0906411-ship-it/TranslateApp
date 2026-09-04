@@ -34,7 +34,7 @@
 
         <Button
             android:id="@+id/btnCheckUpdate"
-            style="?android:attr/borderlessButtonStyle"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/btn_check_update"
@@ -67,7 +67,7 @@
 
         <Button
             android:id="@+id/btnGlossary"
-            style="?android:attr/borderlessButtonStyle"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"

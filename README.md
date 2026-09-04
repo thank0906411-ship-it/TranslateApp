@@ -271,6 +271,19 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
   다항식 해시, 충돌 가능)를 캐시 키로 썼다. 충돌이 나면 서로 다른 두 문장이 같은
   캐시 항목을 공유해 완전히 엉뚱한 번역 결과가 나올 수 있어, SHA-256으로 교체해
   충돌 확률을 실질적으로 없앴다(해싱 방식 변경으로 DB 버전 상향, 기존 캐시 초기화).
+- **다크모드에서 "업데이트 확인"/"용어집" 버튼 글자가 안 보이던 문제**: 두 버튼이
+  `?android:attr/borderlessButtonStyle`(순수 프레임워크 스타일)을 썼는데, 이
+  스타일은 `Theme.MaterialComponents.DayNight`의 다크모드 색상 체계를 따르지
+  않고 AOSP 프레임워크의 기본 텍스트 색(라이트 테마 기준 어두운 색)을 그대로
+  써서, 다크모드에서 어두운 배경에 어두운 글자가 겹쳐 안 보였다.
+  `Widget.MaterialComponents.Button.TextButton`으로 교체해 테마를 정확히 따르도록 수정.
+- **용어집 버튼 클릭 시 강제 종료**: 로그 없이도 방어가 필요한 여러 지점을 함께
+  강화했다. (1) `AlertDialog.show()`를 Activity가 이미 종료 중/소멸된 상태에서
+  호출하면 `WindowManager.BadTokenException`으로 크래시할 수 있어, 호출 전
+  `isFinishing`/`isDestroyed`를 확인하고 `show()` 자체도 예외로부터 보호했다.
+  (2) `ArrayAdapter`의 `resource` 파라미터에 `0`을 넘기던 것(문서화되지 않은
+  사용법)을 표준 리소스로 교체했다. (3) 다이얼로그의 추가/삭제/새로고침
+  코루틴이 실패하면 로그만 남기고 앱이 죽지 않도록 try/catch를 추가했다.
 
 ## 다음 확장 방향
 
