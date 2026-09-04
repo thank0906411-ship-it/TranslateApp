@@ -101,16 +101,49 @@
   });
   window.__tappObserver.observe(document.body, { childList: true, subtree: true });
 
-  // Kotlin이 번역 완료 후 { "tapp-0": "번역문", ... } 형태의 JSON을 넘기면
-  // 해당 블록의 textContent 전체를 번역문으로 치환한다 (내부 태그 구조는 사라짐).
+  // 블록 안에 클릭 가능한 인터랙티브 요소(링크/버튼/입력 등)가 있는지 확인한다.
+  // 있으면 el.textContent를 통째로 덮어써서는 안 된다 — textContent 대입은 해당
+  // 엘리먼트의 모든 자식 노드를 지우고 텍스트 노드 하나로 바꿔버리므로, 블록 안에
+  // 있던 <a>/<button> 자체가 통째로 사라져 클릭이 안 되는 문제가 생긴다(실제로
+  // 어떤 사이트는 "다음 화" 링크가 문단 안에 있어서 번역 후 클릭이 안 됐던 원인).
+  var INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, [onclick], [role="button"]';
+
+  function hasInteractiveDescendant(el) {
+    return el.querySelector(INTERACTIVE_SELECTOR) !== null;
+  }
+
+  // 블록 안의 텍스트 노드를 문서 순서대로 모은다 (문단 안에 여러 텍스트 노드가
+  // <a>/<b> 등으로 나뉘어 있을 수 있다).
+  function collectTextNodesInOrder(root) {
+    var result = [];
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      result.push(node);
+    }
+    return result;
+  }
+
+  // Kotlin이 번역 완료 후 { "tapp-0": "번역문", ... } 형태의 JSON을 넘기면 해당
+  // 블록에 번역문을 적용한다. 인터랙티브 요소가 없는 블록은 기존처럼 textContent를
+  // 통째로 치환하고(가장 단순하고 확실함), 인터랙티브 요소가 있는 블록은 자식 구조를
+  // 보존하기 위해 첫 텍스트 노드에 번역문 전체를 넣고 나머지 텍스트 노드는 비운다.
   window.tappApplyTranslations = function (mapJson) {
     var map = JSON.parse(mapJson);
     var refs = window.__tappBlockRefs || {};
     Object.keys(map).forEach(function (id) {
       var el = refs[id];
-      if (el) {
+      if (!el) return;
+
+      if (!hasInteractiveDescendant(el)) {
         el.textContent = map[id];
+        return;
       }
+
+      var textNodes = collectTextNodesInOrder(el);
+      textNodes.forEach(function (textNode, index) {
+        textNode.nodeValue = index === 0 ? map[id] : '';
+      });
     });
     window.tappRevealPage();
   };
