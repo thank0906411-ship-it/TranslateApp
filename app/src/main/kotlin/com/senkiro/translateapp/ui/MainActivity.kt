@@ -15,9 +15,12 @@ import androidx.lifecycle.lifecycleScope
 import com.senkiro.translateapp.R
 import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.databinding.ActivityMainBinding
+import com.senkiro.translateapp.glossary.Glossary
+import com.senkiro.translateapp.translation.ClaudePostProcessor
 import com.senkiro.translateapp.translation.FallbackTranslator
 import com.senkiro.translateapp.translation.GoogleTranslateEngine
 import com.senkiro.translateapp.translation.GoogleTranslateException
+import com.senkiro.translateapp.translation.GptPostProcessor
 import com.senkiro.translateapp.translation.LanguageOption
 import com.senkiro.translateapp.translation.MLKitTranslator
 import com.senkiro.translateapp.translation.SupportedLanguages
@@ -41,6 +44,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var translator: FallbackTranslator
     private lateinit var cache: TranslationCache
+    private lateinit var glossary: Glossary
     private lateinit var updateChecker: AppUpdateChecker
     private lateinit var pageTranslator: PageTranslator
 
@@ -53,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         cache = TranslationCache(applicationContext)
+        glossary = Glossary(applicationContext)
         updateChecker = AppUpdateChecker(applicationContext)
         translator = FallbackTranslator(GoogleTranslateEngine(), MLKitTranslator()) { issue ->
             runOnUiThread { warnAboutCloudTranslateIssue(issue) }
@@ -69,6 +74,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnTranslate.setOnClickListener { loadFromInput() }
         binding.btnCheckUpdate.setOnClickListener { checkForUpdate() }
+        binding.btnGlossary.setOnClickListener { showGlossaryDialog() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -89,16 +95,27 @@ class MainActivity : AppCompatActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
 
+        // Claude를 우선 시도하고, 설정 안 됐으면 GPT, 둘 다 없으면 후처리 없이 1차 번역만 쓴다.
+        val claudePostProcessor = ClaudePostProcessor()
+        val gptPostProcessor = GptPostProcessor()
+        val postProcessor = when {
+            claudePostProcessor.isConfigured -> claudePostProcessor
+            gptPostProcessor.isConfigured -> gptPostProcessor
+            else -> null
+        }
+
         pageTranslator = PageTranslator(
             webView = webView,
             engine = translator,
             cache = cache,
+            glossary = glossary,
             scope = lifecycleScope,
             sourceLang = SupportedLanguages.DEFAULT_SOURCE.code,
             targetLang = SupportedLanguages.DEFAULT_TARGET.code,
             onStateChanged = { translating ->
                 binding.progressBar.visibility = if (translating) View.VISIBLE else View.GONE
-            }
+            },
+            llmPostProcessor = postProcessor
         )
 
         webView.webViewClient = object : WebViewClient() {
@@ -148,6 +165,18 @@ class MainActivity : AppCompatActivity() {
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+
+    /** 용어집(원문 용어 -> 고정 번역어) 추가/삭제 다이얼로그. 닫으면 PageTranslator가 즉시 재적용한다. */
+    private fun showGlossaryDialog() {
+        GlossaryDialog(
+            activity = this,
+            glossary = glossary,
+            scope = lifecycleScope,
+            onGlossaryChanged = {
+                lifecycleScope.launch(Dispatchers.IO) { pageTranslator.reloadGlossary() }
+            }
+        ).show()
+    }
 
     private fun loadFromInput() {
         var url = binding.editUrl.text.toString().trim()

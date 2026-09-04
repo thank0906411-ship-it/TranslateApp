@@ -10,6 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import java.text.Normalizer
 import java.util.concurrent.TimeUnit
 
 /**
@@ -40,7 +41,10 @@ interface TranslationDao {
     suspend fun deleteOlderThan(beforeTimestamp: Long)
 }
 
-@Database(entities = [TranslationEntity::class], version = 2, exportSchema = false)
+// 캐시 키 해싱 방식이 바뀔 때마다(예: 텍스트 정규화 도입) 버전을 올려 기존 캐시를
+// destructiveMigration으로 정리한다 — 옛 방식으로 만들어진 해시가 새 방식과 안 맞아
+// 캐시 미스만 계속 나는 것보다, 한 번 비우고 새로 쌓는 게 낫다.
+@Database(entities = [TranslationEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun translationDao(): TranslationDao
 
@@ -86,8 +90,20 @@ class TranslationCache(context: Context) {
         dao.deleteOlderThan(beforeTimestamp)
     }
 
+    /**
+     * 같은 문장이라도 사이트마다 공백/줄바꿈이 조금씩 다르게 들어있거나(연속 공백,
+     * 탭, 개행), 같은 글자를 다른 유니코드 결합 형태(NFC/NFD)로 인코딩하는 경우가 있어
+     * 그대로 해싱하면 캐시가 안 맞고 매번 다시 번역을 호출하게 된다. 캐시 키를 만들 때만
+     * 정규화하고(원문 표시/번역 결과에는 영향 없음), 히트율을 높인다.
+     */
+    private fun normalize(text: String): String {
+        return Normalizer.normalize(text, Normalizer.Form.NFC)
+            .trim()
+            .replace(Regex("\\s+"), " ")
+    }
+
     private fun makeHash(text: String, sourceLang: String, targetLang: String): String {
-        return "$text|$sourceLang|$targetLang".hashCode().toString()
+        return "${normalize(text)}|$sourceLang|$targetLang".hashCode().toString()
     }
 
     companion object {

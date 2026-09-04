@@ -4,6 +4,9 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.lifecycle.LifecycleCoroutineScope
 import com.senkiro.translateapp.cache.TranslationCache
+import com.senkiro.translateapp.glossary.Glossary
+import com.senkiro.translateapp.glossary.GlossaryApplier
+import com.senkiro.translateapp.translation.LlmPostProcessor
 import com.senkiro.translateapp.translation.TranslationEngine
 import com.senkiro.translateapp.utils.Logger
 import kotlinx.coroutines.Dispatchers
@@ -25,18 +28,30 @@ class PageTranslator(
     private val webView: WebView,
     private val engine: TranslationEngine,
     private val cache: TranslationCache,
+    private val glossary: Glossary,
     private val scope: LifecycleCoroutineScope,
     var sourceLang: String,
     var targetLang: String,
-    private val onStateChanged: (translating: Boolean) -> Unit
+    private val onStateChanged: (translating: Boolean) -> Unit,
+    /** 설정된 LLM 후처리기가 있으면(Claude/GPT 중 isConfigured가 true인 것) 문맥 다듬기에 쓴다. */
+    private val llmPostProcessor: LlmPostProcessor? = null
 ) {
 
     private val injectScript: String by lazy {
         webView.context.assets.open("inline_translate.js").bufferedReader().use { it.readText() }
     }
 
+    // 페이지마다 매번 DB를 조회하지 않도록 캐시해두고, 용어집이 바뀌면 reloadGlossary()로 갱신한다.
+    @Volatile private var glossaryApplier = GlossaryApplier(emptyList())
+
     init {
         webView.addJavascriptInterface(Bridge(), "TranslateAppBridge")
+        scope.launch(Dispatchers.IO) { reloadGlossary() }
+    }
+
+    /** 설정 화면 등에서 용어집을 편집한 뒤, 이후 번역부터 바로 반영되도록 다시 불러온다. */
+    suspend fun reloadGlossary() {
+        glossaryApplier = GlossaryApplier(glossary.getAll())
     }
 
     /**
@@ -86,16 +101,51 @@ class PageTranslator(
 
             withContext(Dispatchers.IO) { engine.prepareModel(sourceLang, targetLang) }
 
-            val result = JSONObject()
+            val applier = glossaryApplier
+            val idToTranslated = LinkedHashMap<String, String>()
+            // LLM 후처리 대상 — 이번에 실제로 새로 번역된(캐시 미스) 블록만 모은다. 캐시 히트
+            // 블록까지 매번 다시 LLM에 보내면 문맥 효과에 비해 비용/지연이 커지기 때문이다.
+            val postProcessTargets = LinkedHashMap<String, Pair<String, String>>() // id -> (원문, 1차번역)
+
             withContext(Dispatchers.IO) {
-                for ((id, text) in idToText) {
-                    val translated = cache.get(text, sourceLang, targetLang)
-                        ?: engine.translate(text, sourceLang, targetLang).also { translated ->
-                            cache.put(text, sourceLang, targetLang, translated)
+                for ((id, originalText) in idToText) {
+                    val (textToTranslate, placeholders) = applier.applyPlaceholders(originalText)
+
+                    if (placeholders.isEmpty()) {
+                        val cached = cache.get(originalText, sourceLang, targetLang)
+                        if (cached != null) {
+                            idToTranslated[id] = cached
+                        } else {
+                            val translated = engine.translate(originalText, sourceLang, targetLang)
+                            cache.put(originalText, sourceLang, targetLang, translated)
+                            idToTranslated[id] = translated
+                            postProcessTargets[id] = originalText to translated
                         }
-                    result.put(id, translated)
+                    } else {
+                        // 용어집이 적용된 블록은 캐시를 쓰지 않고 항상 새로 번역한다. 플레이스홀더가
+                        // 적용된 결과를 캐시하면, 나중에 용어집이 바뀌었을 때 캐시된 옛 치환
+                        // 결과와 새 복원 매핑이 어긋날 수 있어 정확성을 우선해 캐시를 건너뛴다.
+                        // LLM 후처리 대상에서도 제외한다 — 후처리가 고정 번역어를 다시 바꿔버릴 수 있다.
+                        val translated = engine.translate(textToTranslate, sourceLang, targetLang)
+                        idToTranslated[id] = applier.restorePlaceholders(translated, placeholders)
+                    }
+                }
+
+                if (llmPostProcessor?.isConfigured == true && postProcessTargets.isNotEmpty()) {
+                    try {
+                        val ids = postProcessTargets.keys.toList()
+                        val originals = ids.map { postProcessTargets.getValue(it).first }
+                        val translated = ids.map { postProcessTargets.getValue(it).second }
+                        val refined = llmPostProcessor.refine(originals, translated, targetLang)
+                        ids.forEachIndexed { index, id -> idToTranslated[id] = refined[index] }
+                    } catch (e: Exception) {
+                        Logger.e("LLM 후처리 실패, 1차 번역 결과를 그대로 사용", e)
+                    }
                 }
             }
+
+            val result = JSONObject()
+            idToTranslated.forEach { (id, text) -> result.put(id, text) }
 
             withContext(Dispatchers.Main) {
                 val script = "window.tappApplyTranslations(${JSONObject.quote(result.toString())})"

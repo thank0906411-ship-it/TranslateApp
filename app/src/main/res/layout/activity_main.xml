@@ -65,6 +65,15 @@
             android:layout_marginStart="8dp"
             android:text="@string/btn_translate" />
 
+        <Button
+            android:id="@+id/btnGlossary"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:text="@string/btn_glossary"
+            android:textSize="11sp" />
+
     </LinearLayout>
 
     <ProgressBar

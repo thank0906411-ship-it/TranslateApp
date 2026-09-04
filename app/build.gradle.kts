@@ -21,15 +21,21 @@ android {
     }
     val googleTranslateApiKey = localProps.getProperty("GOOGLE_TRANSLATE_API_KEY", "")
     val githubUpdatePat = localProps.getProperty("UPDATE_CHECK_PAT", "")
+    // 둘 다 선택 사항 — 번역 결과를 문맥과 함께 다듬어주는 LLM 후처리용 (ClaudePostProcessor /
+    // GptPostProcessor). 없으면 후처리 없이 1차 번역(ML Kit/Cloud Translation) 결과를 그대로 쓴다.
+    val anthropicApiKey = localProps.getProperty("ANTHROPIC_API_KEY", "")
+    val openAiApiKey = localProps.getProperty("OPENAI_API_KEY", "")
 
     defaultConfig {
         applicationId = "com.senkiro.translateapp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "8.0"
+        versionCode = 9
+        versionName = "9.0"
         buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"$googleTranslateApiKey\"")
         buildConfigField("String", "GITHUB_UPDATE_PAT", "\"$githubUpdatePat\"")
+        buildConfigField("String", "ANTHROPIC_API_KEY", "\"$anthropicApiKey\"")
+        buildConfigField("String", "OPENAI_API_KEY", "\"$openAiApiKey\"")
     }
 
     // CI(GitHub Actions)에서 환경변수로 keystore 정보를 주입한다.
