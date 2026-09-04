@@ -63,9 +63,9 @@ class GlossaryDialog(
         }
     }
 
-    private fun deleteTerm(sourceTerm: String) {
+    private fun deleteTerm(term: GlossaryTerm) {
         scope.launch {
-            withContext(Dispatchers.IO) { glossary.delete(sourceTerm) }
+            withContext(Dispatchers.IO) { glossary.delete(term) }
             reload()
         }
     }
@@ -96,7 +96,7 @@ class GlossaryDialog(
             }
             val term = terms[position]
             itemBinding.textTermPair.text = "${term.sourceTerm} → ${term.targetTerm}"
-            itemBinding.btnDeleteTerm.setOnClickListener { deleteTerm(term.sourceTerm) }
+            itemBinding.btnDeleteTerm.setOnClickListener { deleteTerm(term) }
             return itemBinding.root
         }
     }

@@ -15,10 +15,16 @@ import androidx.room.RoomDatabase
  * 사용자가 등록한 "원문 용어 -> 고정 번역어" 매핑 하나를 담는다.
  * ML Kit/Cloud Translation 둘 다 커스텀 용어집을 번역 엔진에 직접 넘기는 기능이
  * 없으므로, GlossaryApplier가 번역 전/후로 텍스트를 치환하는 방식으로 흉내낸다.
+ *
+ * @param key 대소문자를 구분하지 않는 검색/중복 방지용 기본 키(소문자로 정규화됨).
+ *   GlossaryApplier가 매칭할 때 ignoreCase로 찾으므로, "Amazon"으로 등록한 뒤
+ *   "amazon"을 다시 등록하면 별개의 행이 아니라 같은 항목이 갱신되어야 한다.
+ * @param sourceTerm 사용자가 실제로 입력한 표기 그대로 (목록 화면에 이 값을 보여준다).
  */
 @Entity(tableName = "glossary_terms")
 data class GlossaryTerm(
-    @PrimaryKey val sourceTerm: String,
+    @PrimaryKey val key: String,
+    val sourceTerm: String,
     val targetTerm: String
 )
 
@@ -30,11 +36,13 @@ interface GlossaryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(term: GlossaryTerm)
 
-    @Query("DELETE FROM glossary_terms WHERE sourceTerm = :sourceTerm")
-    suspend fun delete(sourceTerm: String)
+    @Query("DELETE FROM glossary_terms WHERE key = :key")
+    suspend fun delete(key: String)
 }
 
-@Database(entities = [GlossaryTerm::class], version = 1, exportSchema = false)
+// 대소문자 무관 중복 방지를 위해 PK를 sourceTerm -> key로 바꾸면서 스키마가 변경되어
+// 버전을 올렸다. 이 기능은 아직 배포 초기라 destructiveMigration으로 충분하다.
+@Database(entities = [GlossaryTerm::class], version = 2, exportSchema = false)
 abstract class GlossaryDatabase : RoomDatabase() {
     abstract fun glossaryDao(): GlossaryDao
 
@@ -47,7 +55,7 @@ abstract class GlossaryDatabase : RoomDatabase() {
                     context.applicationContext,
                     GlossaryDatabase::class.java,
                     "glossary.db"
-                ).build().also { INSTANCE = it }
+                ).fallbackToDestructiveMigration().build().also { INSTANCE = it }
             }
         }
     }
@@ -60,10 +68,11 @@ class Glossary(context: Context) {
     suspend fun getAll(): List<GlossaryTerm> = dao.getAll()
 
     suspend fun upsert(sourceTerm: String, targetTerm: String) {
-        dao.upsert(GlossaryTerm(sourceTerm.trim(), targetTerm.trim()))
+        val trimmedSource = sourceTerm.trim()
+        dao.upsert(GlossaryTerm(key = trimmedSource.lowercase(), sourceTerm = trimmedSource, targetTerm = targetTerm.trim()))
     }
 
-    suspend fun delete(sourceTerm: String) {
-        dao.delete(sourceTerm)
+    suspend fun delete(term: GlossaryTerm) {
+        dao.delete(term.key)
     }
 }
