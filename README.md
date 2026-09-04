@@ -266,6 +266,16 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
 
 ## 안정성 개선
 
+- **번역 실패 감지의 숫자/기호 오탐**: "원문=번역문이면 번역 실패"로 보는 감지 로직이
+  "2024", "100원"처럼 글자(letter)가 아예 없는 블록까지 실패로 오판해, 그런 블록마다
+  불필요한 ML Kit 재시도가 실행되고 화면에 빨간 밑줄이 남발되는 문제가 있었다.
+  `FallbackTranslator.isEffectivelyUntranslated`가 원문에 글자가 하나도 없으면
+  애초에 비교 자체를 건너뛰도록 수정.
+- **사용량 카운터 레이스 컨디션**: `UsageTracker.addCloudTranslateChars`/`addLlmChars`가
+  "읽고 → 더하고 → 쓰기"를 원자적으로 하지 않아, SPA 환경에서 여러 블록의 번역이 짧은
+  시간에 동시 완료되면 두 코루틴이 같은 옛 값을 읽어 한쪽 증가분이 사라질 수 있었다
+  (사용량이 실제보다 적게 표시됨). `synchronized`로 읽기/쓰기 전체를 하나의 임계
+  구역으로 묶어 방지.
 - **번역 동시성 안전성**: SPA 대응(MutationObserver)으로 여러 블록의 번역 요청이 짧은
   시간에 겹쳐 들어올 수 있게 되면서, `MLKitTranslator`가 캐시해둔 번역기 인스턴스를
   락 없이 교체/조회하면 한 요청이 언어쌍 A용으로 막 교체한 번역기를 다른 요청이

@@ -160,11 +160,16 @@ class FallbackTranslator(
          * 번역 결과가 원문과 "사실상 같은지" 판단한다. 공백/대소문자 차이 정도는 무시하고
          * 비교해야 한다 — 예를 들어 API가 앞뒤 공백만 다듬어 돌려주는 경우까지 "실패"로
          * 오판하면 안 되기 때문이다.
+         *
+         * 원문에 글자(letter) 자체가 없으면(숫자만, 기호만, 이모지만 등) 애초에 번역될
+         * 내용이 없으므로 원문=번역문이 정상이다 — "2024", "100원", "★★★☆☆" 같은 블록을
+         * 매번 "번역 실패"로 오판해 불필요한 재시도와 화면 표시가 남발되는 걸 막는다.
          */
         fun isEffectivelyUntranslated(original: String, translated: String): Boolean {
             val normalizedOriginal = original.trim().lowercase()
             val normalizedTranslated = translated.trim().lowercase()
             if (normalizedOriginal.length < 2) return false
+            if (normalizedOriginal.none { it.isLetter() }) return false
             return normalizedOriginal == normalizedTranslated
         }
     }

@@ -15,6 +15,12 @@ class UsageTracker(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences("usage_tracker", Context.MODE_PRIVATE)
 
+    // SPA 대응(MutationObserver)으로 여러 블록의 번역이 동시에 완료될 수 있어, 여러
+    // 코루틴이 동시에 addXxxChars를 호출할 수 있다. "읽고-더하고-쓰기"가 원자적이지
+    // 않으면 두 호출이 같은 옛 값을 읽어 한쪽 증가분이 유실될 수 있어(카운터 손실),
+    // synchronized로 이 클래스의 모든 읽기/쓰기를 하나의 임계 구역으로 묶는다.
+    private val lock = Any()
+
     /** 월이 바뀌면 카운터를 리셋하기 위한 키. "yyyy-MM" 형식. */
     private fun currentMonthKey(): String {
         val cal = Calendar.getInstance()
@@ -35,9 +41,11 @@ class UsageTracker(context: Context) {
 
     fun addCloudTranslateChars(count: Int) {
         if (count <= 0) return
-        resetIfNewMonth()
-        val current = prefs.getLong(KEY_CLOUD_TRANSLATE_CHARS, 0L)
-        prefs.edit().putLong(KEY_CLOUD_TRANSLATE_CHARS, current + count).apply()
+        synchronized(lock) {
+            resetIfNewMonth()
+            val current = prefs.getLong(KEY_CLOUD_TRANSLATE_CHARS, 0L)
+            prefs.edit().putLong(KEY_CLOUD_TRANSLATE_CHARS, current + count).apply()
+        }
     }
 
     /**
@@ -47,16 +55,18 @@ class UsageTracker(context: Context) {
      */
     fun addLlmChars(count: Int) {
         if (count <= 0) return
-        resetIfNewMonth()
-        val current = prefs.getLong(KEY_LLM_CHARS, 0L)
-        prefs.edit().putLong(KEY_LLM_CHARS, current + count).apply()
+        synchronized(lock) {
+            resetIfNewMonth()
+            val current = prefs.getLong(KEY_LLM_CHARS, 0L)
+            prefs.edit().putLong(KEY_LLM_CHARS, current + count).apply()
+        }
     }
 
     data class UsageSnapshot(val cloudTranslateChars: Long, val llmChars: Long)
 
-    fun getSnapshot(): UsageSnapshot {
+    fun getSnapshot(): UsageSnapshot = synchronized(lock) {
         resetIfNewMonth()
-        return UsageSnapshot(
+        UsageSnapshot(
             cloudTranslateChars = prefs.getLong(KEY_CLOUD_TRANSLATE_CHARS, 0L),
             llmChars = prefs.getLong(KEY_LLM_CHARS, 0L)
         )
