@@ -8,8 +8,11 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.senkiro.translateapp.BuildConfig
+import com.senkiro.translateapp.R
+import com.senkiro.translateapp.utils.Logger
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -128,8 +131,18 @@ class AppUpdateChecker(private val context: Context) {
                 val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (id != downloadId) return
                 unregisterDownloadReceiver()
-                promptInstall(destFile)
-                onComplete()
+
+                // ACTION_DOWNLOAD_COMPLETE는 다운로드가 실패해도(네트워크 끊김, 인증 만료,
+                // 저장공간 부족 등) 브로드캐스트된다. 상태를 확인하지 않고 바로 설치 화면을
+                // 띄우면 불완전하거나 없는 파일로 PackageInstaller를 여는 셈이 되므로,
+                // 실제로 성공했는지 DownloadManager.Query로 확인한 뒤에만 설치를 제안한다.
+                if (isDownloadSuccessful(downloadId)) {
+                    promptInstall(destFile)
+                    onComplete()
+                } else {
+                    Logger.e("업데이트 다운로드 실패 (downloadId=$downloadId)")
+                    Toast.makeText(context, context.getString(R.string.update_download_failed), Toast.LENGTH_LONG).show()
+                }
             }
         }
         downloadReceiver = receiver
@@ -143,6 +156,18 @@ class AppUpdateChecker(private val context: Context) {
         } else {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        }
+    }
+
+    /** DownloadManager.Query로 실제 다운로드 결과 상태를 확인한다. */
+    private fun isDownloadSuccessful(downloadId: Long): Boolean {
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val query = DownloadManager.Query().setFilterById(downloadId)
+        downloadManager.query(query).use { cursor ->
+            if (!cursor.moveToFirst()) return false
+            val statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+            if (statusIndex < 0) return false
+            return cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL
         }
     }
 

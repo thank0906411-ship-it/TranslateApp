@@ -241,6 +241,11 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
   사용자가 계속 온디바이스 번역만 받고 있다는 걸 알 방법이 없었다. 이제
   `GoogleTranslateException`으로 원인을 구분해, 429/403일 때만 세션당 한 번
   Toast로 알려준다(그 외 일반 오류는 여전히 조용히 폴백).
+- **업데이트 다운로드 실패 감지**: `DownloadManager`의 `ACTION_DOWNLOAD_COMPLETE`는
+  다운로드가 실패해도(네트워크 끊김, PAT 만료, 저장공간 부족 등) 브로드캐스트된다.
+  이전에는 이 신호만 보고 무조건 설치 화면을 띄워, 불완전하거나 없는 파일로
+  `PackageInstaller`를 여는 문제가 있었다. `DownloadManager.Query`로 실제
+  `STATUS_SUCCESSFUL` 여부를 확인한 뒤에만 설치를 제안하고, 실패 시 Toast로 안내한다.
 
 ## 다음 확장 방향
 
