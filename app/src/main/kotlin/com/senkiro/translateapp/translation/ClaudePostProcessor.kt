@@ -30,12 +30,13 @@ class ClaudePostProcessor : LlmPostProcessor {
     override suspend fun refine(
         originalBlocks: List<String>,
         translatedBlocks: List<String>,
-        targetLang: String
+        targetLang: String,
+        contextBlocks: List<String>
     ): List<String> {
         if (!isConfigured) throw IOException("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
         if (originalBlocks.isEmpty()) return translatedBlocks
 
-        val prompt = buildRefinementPrompt(originalBlocks, translatedBlocks, targetLang)
+        val prompt = buildRefinementPrompt(originalBlocks, translatedBlocks, targetLang, contextBlocks)
 
         val requestJson = JSONObject().apply {
             put("model", "claude-opus-5")

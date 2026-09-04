@@ -25,4 +25,15 @@ object SupportedLanguages {
 
     val DEFAULT_SOURCE = ALL.first { it.code == "en" }
     val DEFAULT_TARGET = ALL.first { it.code == "ko" }
+
+    /**
+     * <html lang="..."> 값(예: "en", "ja-JP", "zh-Hans", "pt-BR")을 지원 목록의
+     * 언어 코드와 매칭한다. BCP-47 태그는 지역/스크립트 서브태그가 붙는 경우가 많아
+     * 정확히 일치하는 대신 앞부분(주 언어 서브태그)만 비교한다.
+     * @return 매칭되는 지원 언어가 없으면 null (지원 목록 밖의 언어이거나 값이 이상함)
+     */
+    fun findByHtmlLang(htmlLang: String): LanguageOption? {
+        val primarySubtag = htmlLang.trim().substringBefore('-').lowercase()
+        return ALL.firstOrNull { it.code == primarySubtag }
+    }
 }

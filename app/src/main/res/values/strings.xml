@@ -22,4 +22,7 @@
     <string name="glossary_btn_delete">삭제</string>
     <string name="glossary_btn_close">닫기</string>
     <string name="glossary_error_empty">원문 용어와 고정 번역어를 모두 입력해주세요.</string>
+    <string name="btn_history">기록</string>
+    <string name="history_dialog_title">최근 방문 / 즐겨찾기</string>
+    <string name="translation_failed_notice">일부 문장이 번역되지 않았을 수 있습니다.</string>
 </resources>

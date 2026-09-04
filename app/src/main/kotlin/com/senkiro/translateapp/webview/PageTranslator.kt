@@ -6,8 +6,10 @@ import androidx.lifecycle.LifecycleCoroutineScope
 import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.glossary.Glossary
 import com.senkiro.translateapp.glossary.GlossaryApplier
+import com.senkiro.translateapp.translation.FallbackTranslator
 import com.senkiro.translateapp.translation.LlmPostProcessor
 import com.senkiro.translateapp.translation.TranslationEngine
+import com.senkiro.translateapp.usage.UsageTracker
 import com.senkiro.translateapp.utils.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +37,15 @@ class PageTranslator(
     var targetLang: String,
     private val onStateChanged: (translating: Boolean) -> Unit,
     /** 설정된 LLM 후처리기가 있으면(Claude/GPT 중 isConfigured가 true인 것) 문맥 다듬기에 쓴다. */
-    private val llmPostProcessor: LlmPostProcessor? = null
+    private val llmPostProcessor: LlmPostProcessor? = null,
+    /** 페이지의 <html lang="..">에서 감지된 언어 코드를 알려준다 (출발어 자동 감지용). */
+    private val onLanguageDetected: (String) -> Unit = {},
+    /** LLM 후처리 사용량(대략치)을 기록하는 트래커. null이면 기록하지 않는다. */
+    private val usageTracker: UsageTracker? = null,
+    /** 엔진 폴백까지 시도했는데도 원문과 동일하게 남은(=번역 실패로 추정되는) 블록이
+     *  한 번의 번역 배치에서 하나 이상 발견되면 호출된다. 블록마다 매번 알리면 거슬리므로
+     *  호출부(MainActivity)가 페이지 로드당 1회 정도로 스스로 조절하는 것을 권장한다. */
+    private val onTranslationFailedDetected: () -> Unit = {}
 ) {
 
     private val injectScript: String by lazy {
@@ -85,6 +95,11 @@ class PageTranslator(
         @JavascriptInterface
         fun onTextsCollected(nodesJson: String) {
             scope.launch { translateAndApply(nodesJson) }
+        }
+
+        @JavascriptInterface
+        fun onLanguageDetected(htmlLang: String) {
+            onLanguageDetected.invoke(htmlLang)
         }
     }
 
@@ -142,8 +157,21 @@ class PageTranslator(
                         val ids = postProcessTargets.keys.toList()
                         val originals = ids.map { postProcessTargets.getValue(it).first }
                         val translated = ids.map { postProcessTargets.getValue(it).second }
-                        val refined = llmPostProcessor.refine(originals, translated, targetLang)
+                        // 캐시 히트라서 이번에 새로 번역하지 않은 블록들 — 다시 번역 요청하지
+                        // 않고 참고 문맥으로만 곁들인다. 개수를 제한하는 이유는 페이지가 아주
+                        // 길면(캐시가 많이 쌓인 재방문 등) 프롬프트가 과도하게 커져 비용/지연이
+                        // 늘어나기 때문이다 — 문맥 효과는 일부만 있어도 충분하다.
+                        val contextBlocks = idToTranslated.keys
+                            .filter { it !in postProcessTargets }
+                            .map { idToTranslated.getValue(it) }
+                            .take(MAX_CONTEXT_BLOCKS)
+                        val refined = llmPostProcessor.refine(originals, translated, targetLang, contextBlocks)
                         ids.forEachIndexed { index, id -> idToTranslated[id] = refined[index] }
+                        // 실제 토큰 수는 API 응답의 usage 필드를 파싱해야 정확히 알 수 있는데,
+                        // 지금은 후처리기가 그 값을 반환하지 않으므로 프롬프트+응답 글자 수
+                        // 합계로 근사한다(대략적인 참고용 수치일 뿐 정확한 토큰 수는 아님).
+                        val charCount = (originals + translated + refined + contextBlocks).sumOf { it.length }
+                        usageTracker?.addLlmChars(charCount)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -155,9 +183,31 @@ class PageTranslator(
             val result = JSONObject()
             idToTranslated.forEach { (id, text) -> result.put(id, text) }
 
+            // 엔진 폴백까지 시도했는데도 원문과 사실상 같은 채로 남은 블록은 번역이
+            // 실패한 것으로 보고, 화면에서 사용자가 알아볼 수 있게 표시해준다(재시도는
+            // 이미 FallbackTranslator 내부에서 ML Kit으로 한 차례 시도된 뒤이므로 여기서는
+            // 감지/표시만 담당한다). 언어쌍이 같은 경우는 원문=번역문이 정상이라 제외한다.
+            val failedIds = if (sourceLang != targetLang) {
+                idToTranslated.filterKeys { id ->
+                    val original = idToText[id]
+                    original != null && FallbackTranslator.isEffectivelyUntranslated(original, idToTranslated.getValue(id))
+                }.keys.toList()
+            } else {
+                emptyList()
+            }
+
             withContext(Dispatchers.Main) {
                 val script = "window.tappApplyTranslations(${JSONObject.quote(result.toString())})"
                 webView.evaluateJavascript(script, null)
+
+                if (failedIds.isNotEmpty()) {
+                    val failedArray = JSONArray(failedIds)
+                    webView.evaluateJavascript(
+                        "window.tappMarkTranslationFailed(${JSONObject.quote(failedArray.toString())})",
+                        null
+                    )
+                    onTranslationFailedDetected()
+                }
             }
         } catch (e: CancellationException) {
             throw e
@@ -166,5 +216,10 @@ class PageTranslator(
         } finally {
             onStateChanged(false)
         }
+    }
+
+    companion object {
+        /** LLM 후처리 프롬프트에 참고 문맥으로 곁들이는 캐시 히트 블록의 최대 개수. */
+        private const val MAX_CONTEXT_BLOCKS = 20
     }
 }

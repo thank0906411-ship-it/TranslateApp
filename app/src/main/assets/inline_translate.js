@@ -49,6 +49,14 @@
     return blocks;
   }
 
+  // 페이지의 <html lang="..."> 속성으로 원문 언어를 추정해 Kotlin에 전달한다.
+  // 정확도가 완벽하진 않지만(사이트가 lang을 안 쓰거나 틀리게 쓰는 경우도 있음),
+  // 대부분의 사이트는 이 값을 정확히 채워두므로 "출발어 자동 감지"의 실용적인 신호가 된다.
+  var htmlLang = document.documentElement.getAttribute('lang');
+  if (htmlLang && window.TranslateAppBridge && window.TranslateAppBridge.onLanguageDetected) {
+    window.TranslateAppBridge.onLanguageDetected(htmlLang);
+  }
+
   // 최초 로드 시 번역 전 원문이 잠깐 보였다 바뀌는 깜빡임을 줄이기 위해, 번역이 끝날 때까지
   // 살짝 흐리게 표시한다(완전히 숨기면 로딩이 멈춘 것처럼 보이므로 opacity만 낮춘다).
   var fadeStyle = document.createElement('style');
@@ -124,10 +132,50 @@
     return result;
   }
 
+  // 번역문을 원문 텍스트 노드들의 "길이 비율"에 맞춰 대략적으로 나눠 배치한다.
+  // 번역 API가 토큰 정렬(어느 원문 구절이 어느 번역 구절에 대응하는지) 정보를 주지
+  // 않으므로 완벽한 대응은 불가능하지만, 각 노드가 원문에서 차지했던 비중만큼
+  // 번역문의 글자 수를 배분하면 "번역문 전체가 한 곳에 몰리는" 것보다는 원문의
+  // 대략적인 구조를 따라간다. 단어 중간이 아니라 공백 경계에서 끊어 어색함을 줄인다.
+  function distributeByRatio(translatedText, originalLengths) {
+    var totalOriginal = originalLengths.reduce(function (sum, len) { return sum + len; }, 0);
+    if (totalOriginal === 0) return originalLengths.map(function () { return ''; });
+
+    var parts = [];
+    var remaining = translatedText;
+    var consumedRatio = 0;
+
+    for (var i = 0; i < originalLengths.length; i++) {
+      var isLast = i === originalLengths.length - 1;
+      consumedRatio += originalLengths[i] / totalOriginal;
+
+      if (isLast) {
+        parts.push(remaining);
+        break;
+      }
+
+      var targetCut = Math.round(translatedText.length * consumedRatio) - (translatedText.length - remaining.length);
+      targetCut = Math.max(0, Math.min(targetCut, remaining.length));
+
+      // 단어 중간에서 끊기지 않도록 targetCut 근방에서 가장 가까운 공백을 찾는다.
+      var cut = targetCut;
+      var searchRadius = 10;
+      for (var d = 0; d <= searchRadius; d++) {
+        if (targetCut + d < remaining.length && remaining[targetCut + d] === ' ') { cut = targetCut + d; break; }
+        if (targetCut - d >= 0 && remaining[targetCut - d] === ' ') { cut = targetCut - d; break; }
+      }
+
+      parts.push(remaining.slice(0, cut).trim());
+      remaining = remaining.slice(cut);
+    }
+
+    return parts;
+  }
+
   // Kotlin이 번역 완료 후 { "tapp-0": "번역문", ... } 형태의 JSON을 넘기면 해당
   // 블록에 번역문을 적용한다. 인터랙티브 요소가 없는 블록은 기존처럼 textContent를
   // 통째로 치환하고(가장 단순하고 확실함), 인터랙티브 요소가 있는 블록은 자식 구조를
-  // 보존하기 위해 첫 텍스트 노드에 번역문 전체를 넣고 나머지 텍스트 노드는 비운다.
+  // 보존하기 위해 텍스트 노드별 원문 길이 비율에 맞춰 번역문을 나눠 배치한다.
   window.tappApplyTranslations = function (mapJson) {
     var map = JSON.parse(mapJson);
     var refs = window.__tappBlockRefs || {};
@@ -141,11 +189,38 @@
       }
 
       var textNodes = collectTextNodesInOrder(el);
+      if (textNodes.length === 0) return;
+      if (textNodes.length === 1) {
+        textNodes[0].nodeValue = map[id];
+        return;
+      }
+
+      var originalLengths = textNodes.map(function (n) { return n.nodeValue.length; });
+      var parts = distributeByRatio(map[id], originalLengths);
       textNodes.forEach(function (textNode, index) {
-        textNode.nodeValue = index === 0 ? map[id] : '';
+        textNode.nodeValue = parts[index] || '';
       });
     });
     window.tappRevealPage();
+  };
+
+  // Kotlin이 "엔진 폴백까지 시도했는데도 원문과 사실상 동일했던" 블록 id 목록을 넘기면,
+  // 해당 블록에 점선 밑줄과 툴팁을 달아 사용자가 번역 실패 가능성을 알아볼 수 있게 한다.
+  // 텍스트 자체를 건드리지 않으므로(스타일/속성만 추가) 인터랙티브 요소 보존 로직과
+  // 충돌하지 않는다.
+  var failStyle = document.createElement('style');
+  failStyle.textContent = '.tapp-translate-failed { border-bottom: 1px dashed #e53935; }';
+  document.head.appendChild(failStyle);
+
+  window.tappMarkTranslationFailed = function (idsJson) {
+    var ids = JSON.parse(idsJson);
+    var refs = window.__tappBlockRefs || {};
+    ids.forEach(function (id) {
+      var el = refs[id];
+      if (!el) return;
+      el.classList.add('tapp-translate-failed');
+      el.setAttribute('title', '이 문장은 번역되지 않았을 수 있습니다.');
+    });
   };
 
   window.tappCollectAndSend();

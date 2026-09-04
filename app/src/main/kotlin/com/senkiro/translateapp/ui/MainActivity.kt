@@ -16,6 +16,7 @@ import com.senkiro.translateapp.R
 import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.databinding.ActivityMainBinding
 import com.senkiro.translateapp.glossary.Glossary
+import com.senkiro.translateapp.history.History
 import com.senkiro.translateapp.translation.ClaudePostProcessor
 import com.senkiro.translateapp.translation.FallbackTranslator
 import com.senkiro.translateapp.translation.GoogleTranslateEngine
@@ -26,6 +27,7 @@ import com.senkiro.translateapp.translation.MLKitTranslator
 import com.senkiro.translateapp.translation.SupportedLanguages
 import com.senkiro.translateapp.update.AppUpdateChecker
 import com.senkiro.translateapp.update.UpdateInfo
+import com.senkiro.translateapp.usage.UsageTracker
 import com.senkiro.translateapp.utils.Logger
 import com.senkiro.translateapp.webview.PageTranslator
 import kotlinx.coroutines.CancellationException
@@ -46,11 +48,30 @@ class MainActivity : AppCompatActivity() {
     private lateinit var translator: FallbackTranslator
     private lateinit var cache: TranslationCache
     private lateinit var glossary: Glossary
+    private lateinit var history: History
+    private lateinit var usageTracker: UsageTracker
     private lateinit var updateChecker: AppUpdateChecker
     private lateinit var pageTranslator: PageTranslator
 
     /** 세션(앱 실행) 중 한 번만 Cloud Translation 과금/권한 문제를 알리기 위한 플래그. */
     private var hasWarnedAboutCloudTranslateIssue = false
+
+    /**
+     * 사용자가 출발어 드롭다운을 직접 건드린 적이 있으면 true. 그 이후로는 페이지의
+     * <html lang>이 감지되어도 자동으로 드롭다운을 바꾸지 않는다 — 사용자의 명시적
+     * 선택이 자동 감지보다 항상 우선해야 하기 때문이다.
+     */
+    private var hasUserManuallySetSourceLang = false
+
+    /**
+     * applyDetectedSourceLang이 spinnerSourceLang.setSelection()을 호출하는 동안 true로
+     * 세팅해, 그로 인해 트리거되는 onItemSelected 콜백이 "사용자가 직접 선택했다"고
+     * 오인해 hasUserManuallySetSourceLang을 true로 만들어버리는 걸 막는다.
+     */
+    private var isApplyingDetectedLang = false
+
+    /** 현재 페이지에서 이미 번역 실패 안내를 했는지 — 페이지 로드당 1회만 알린다. */
+    private var hasWarnedAboutTranslationFailureOnThisPage = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,10 +80,15 @@ class MainActivity : AppCompatActivity() {
 
         cache = TranslationCache(applicationContext)
         glossary = Glossary(applicationContext)
+        history = History(applicationContext)
+        usageTracker = UsageTracker(applicationContext)
         updateChecker = AppUpdateChecker(applicationContext)
-        translator = FallbackTranslator(GoogleTranslateEngine(), MLKitTranslator()) { issue ->
-            runOnUiThread { warnAboutCloudTranslateIssue(issue) }
-        }
+        translator = FallbackTranslator(
+            primary = GoogleTranslateEngine(),
+            mlKitFallback = MLKitTranslator(),
+            onQuotaOrAccessIssue = { issue -> runOnUiThread { warnAboutCloudTranslateIssue(issue) } },
+            onCloudTranslateSuccess = { charCount -> usageTracker.addCloudTranslateChars(charCount) }
+        )
 
         setupWebView()
         setupLanguageSpinners()
@@ -76,6 +102,13 @@ class MainActivity : AppCompatActivity() {
         binding.btnTranslate.setOnClickListener { loadFromInput() }
         binding.btnCheckUpdate.setOnClickListener { checkForUpdate() }
         binding.btnGlossary.setOnClickListener { showGlossaryDialog() }
+        binding.btnHistory.setOnClickListener { showHistoryDialog() }
+        // 별도 버튼을 늘리는 대신, "기록" 버튼을 길게 누르면 이번 달 Cloud
+        // Translation/LLM 후처리 사용량(대략치)을 Toast로 보여준다.
+        binding.btnHistory.setOnLongClickListener {
+            Toast.makeText(this, usageTracker.formatSnapshot(usageTracker.getSnapshot()), Toast.LENGTH_LONG).show()
+            true
+        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -127,14 +160,21 @@ class MainActivity : AppCompatActivity() {
             onStateChanged = { translating ->
                 binding.progressBar.visibility = if (translating) View.VISIBLE else View.GONE
             },
-            llmPostProcessor = postProcessor
+            llmPostProcessor = postProcessor,
+            onLanguageDetected = { htmlLang -> runOnUiThread { applyDetectedSourceLang(htmlLang) } },
+            usageTracker = usageTracker,
+            onTranslationFailedDetected = { runOnUiThread { warnAboutTranslationFailure() } }
         )
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 binding.editUrl.setText(url)
+                hasWarnedAboutTranslationFailureOnThisPage = false
                 pageTranslator.onPageLoaded()
+
+                val title = view.title ?: url
+                lifecycleScope.launch(Dispatchers.IO) { history.recordVisit(url, title) }
             }
         }
     }
@@ -152,10 +192,39 @@ class MainActivity : AppCompatActivity() {
         binding.spinnerTargetLang.setSelection(SupportedLanguages.ALL.indexOf(SupportedLanguages.DEFAULT_TARGET))
 
         binding.spinnerSourceLang.onItemSelectedListener = languageSelectedListener { option ->
+            if (!isApplyingDetectedLang) {
+                hasUserManuallySetSourceLang = true
+            }
             pageTranslator.sourceLang = option.code
         }
         binding.spinnerTargetLang.onItemSelectedListener = languageSelectedListener { option ->
             pageTranslator.targetLang = option.code
+        }
+    }
+
+    /**
+     * 페이지의 <html lang>에서 감지된 언어로 출발어 드롭다운을 자동으로 맞춘다.
+     * 사용자가 이미 수동으로 출발어를 선택한 적이 있으면(hasUserManuallySetSourceLang)
+     * 자동 감지보다 그 선택을 우선하므로 아무것도 하지 않는다. 감지된 언어가 지원
+     * 목록에 없거나 이미 선택된 언어와 같으면 스피너를 건드리지 않는다(불필요한
+     * onItemSelected 트리거와 재번역 방지).
+     */
+    private fun applyDetectedSourceLang(htmlLang: String) {
+        if (hasUserManuallySetSourceLang) return
+
+        val detected = SupportedLanguages.findByHtmlLang(htmlLang) ?: return
+        val currentPosition = binding.spinnerSourceLang.selectedItemPosition
+        val newPosition = SupportedLanguages.ALL.indexOf(detected)
+        if (newPosition < 0 || newPosition == currentPosition) return
+
+        // setSelection()은 onItemSelected를 동기적으로 트리거하므로, 그 안에서
+        // pageTranslator.sourceLang 갱신과 재번역까지 이미 처리된다. isApplyingDetectedLang
+        // 가드로 감싸 이 자동 변경이 hasUserManuallySetSourceLang을 세팅하지 않게 한다.
+        isApplyingDetectedLang = true
+        try {
+            binding.spinnerSourceLang.setSelection(newPosition)
+        } finally {
+            isApplyingDetectedLang = false
         }
     }
 
@@ -186,6 +255,19 @@ class MainActivity : AppCompatActivity() {
             scope = lifecycleScope,
             onGlossaryChanged = {
                 lifecycleScope.launch(Dispatchers.IO) { pageTranslator.reloadGlossary() }
+            }
+        ).show()
+    }
+
+    /** 최근 방문/즐겨찾기 목록 다이얼로그. 항목을 누르면 그 URL로 바로 이동한다. */
+    private fun showHistoryDialog() {
+        HistoryDialog(
+            activity = this,
+            history = history,
+            scope = lifecycleScope,
+            onEntrySelected = { url ->
+                binding.editUrl.setText(url)
+                binding.webView.loadUrl(url)
             }
         ).show()
     }
@@ -230,6 +312,17 @@ class MainActivity : AppCompatActivity() {
             is GoogleTranslateException.Other -> return
         }
         Toast.makeText(this, reason, Toast.LENGTH_LONG).show()
+    }
+
+    /**
+     * 엔진 폴백까지 시도했는데도 원문 그대로 남은 블록이 감지되면 호출된다. 어느 블록인지는
+     * inline_translate.js가 점선 밑줄로 이미 표시해주므로, 여기서는 그런 블록이 있다는 사실
+     * 자체를 페이지 로드당 한 번만 짧게 안내한다.
+     */
+    private fun warnAboutTranslationFailure() {
+        if (hasWarnedAboutTranslationFailureOnThisPage) return
+        hasWarnedAboutTranslationFailureOnThisPage = true
+        Toast.makeText(this, getString(R.string.translation_failed_notice), Toast.LENGTH_LONG).show()
     }
 
     /**

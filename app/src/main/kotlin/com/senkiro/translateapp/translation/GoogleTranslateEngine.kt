@@ -93,11 +93,15 @@ class GoogleTranslateEngine : TranslationEngine {
  *   Cloud Translation 호출이 실패했을 때 호출된다. 이 상황은 네트워크 단절과 달리
  *   사용자가 알아야 할 상태(계속 ML Kit으로만 번역되고 있다는 뜻)이므로, 매 블록마다
  *   반복 호출하지 않고 세션당 한 번만 알리도록 호출부(MainActivity)에서 처리한다.
+ * @param onCloudTranslateSuccess Cloud Translation 호출이 성공했을 때 번역한 글자 수를
+ *   알려준다(사용량 표시용, UsageTracker가 소비). ML Kit으로 폴백된 경우는 호출되지 않는다
+ *   — 온디바이스 번역은 과금과 무관하기 때문이다.
  */
 class FallbackTranslator(
     private val primary: GoogleTranslateEngine,
     private val mlKitFallback: MLKitTranslator,
-    private val onQuotaOrAccessIssue: (GoogleTranslateException) -> Unit = {}
+    private val onQuotaOrAccessIssue: (GoogleTranslateException) -> Unit = {},
+    private val onCloudTranslateSuccess: (charCount: Int) -> Unit = {}
 ) : TranslationEngine {
 
     private fun usePrimary() = primary.isConfigured
@@ -115,7 +119,26 @@ class FallbackTranslator(
     override suspend fun translate(text: String, sourceLang: String, targetLang: String): String {
         if (usePrimary()) {
             try {
-                return primary.translate(text, sourceLang, targetLang)
+                val result = primary.translate(text, sourceLang, targetLang)
+                onCloudTranslateSuccess(text.length)
+
+                // Cloud Translation이 오류 없이 성공했는데도 결과가 원문과 사실상 동일하면
+                // (미지원 언어쌍이거나 짧은 고유명사가 아닌 이상) 번역이 실질적으로 실패한
+                // 것으로 보고 ML Kit으로 한 번 더 시도해본다. 언어쌍이 같으면 원문=번역문이
+                // 정상이므로 이 경우는 제외한다.
+                if (sourceLang != targetLang && isEffectivelyUntranslated(text, result)) {
+                    try {
+                        mlKitFallback.prepareModel(sourceLang, targetLang)
+                        val retried = mlKitFallback.translate(text, sourceLang, targetLang)
+                        if (!isEffectivelyUntranslated(text, retried)) return retried
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e("번역 실패 감지 후 ML Kit 재시도도 실패, 1차 결과 유지", e)
+                    }
+                }
+
+                return result
             } catch (e: CancellationException) {
                 // 코루틴 취소는 폴백 대상이 아니라 그대로 전파해야 한다. 여기서 잡아
                 // ML Kit으로 계속 진행하면 이미 취소된 작업(예: 페이지 이동으로 번역
@@ -130,5 +153,19 @@ class FallbackTranslator(
             }
         }
         return mlKitFallback.translate(text, sourceLang, targetLang)
+    }
+
+    companion object {
+        /**
+         * 번역 결과가 원문과 "사실상 같은지" 판단한다. 공백/대소문자 차이 정도는 무시하고
+         * 비교해야 한다 — 예를 들어 API가 앞뒤 공백만 다듬어 돌려주는 경우까지 "실패"로
+         * 오판하면 안 되기 때문이다.
+         */
+        fun isEffectivelyUntranslated(original: String, translated: String): Boolean {
+            val normalizedOriginal = original.trim().lowercase()
+            val normalizedTranslated = translated.trim().lowercase()
+            if (normalizedOriginal.length < 2) return false
+            return normalizedOriginal == normalizedTranslated
+        }
     }
 }
