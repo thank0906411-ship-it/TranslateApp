@@ -10,6 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import java.util.concurrent.TimeUnit
 
 /**
  * 원문 문장 하나 단위로 캐싱한다 (URL 단위가 아님).
@@ -80,7 +81,16 @@ class TranslationCache(context: Context) {
         )
     }
 
+    /** 지정한 기간보다 오래된 캐시 항목을 지운다. */
+    suspend fun deleteOlderThan(beforeTimestamp: Long) {
+        dao.deleteOlderThan(beforeTimestamp)
+    }
+
     private fun makeHash(text: String, sourceLang: String, targetLang: String): String {
         return "$text|$sourceLang|$targetLang".hashCode().toString()
+    }
+
+    companion object {
+        val MAX_AGE_MILLIS = TimeUnit.DAYS.toMillis(30)
     }
 }

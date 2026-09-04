@@ -162,12 +162,25 @@ keytool -genkeypair -v -keystore release.keystore -alias translateapp \
 base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등록
 ```
 
+## 부가 기능
+
+- **SPA/무한스크롤 대응**: `inline_translate.js`가 `MutationObserver`로 최초 로드 이후
+  DOM에 새로 추가되는 블록(무한스크롤 피드, 지연 로딩 등)도 감지해 자동 번역한다.
+  뮤테이션이 몰릴 때를 대비해 300ms 디바운스로 묶어서 처리한다.
+- **번역 중 깜빡임(FOUC) 완화**: 최초 로드 시 번역이 끝날 때까지 `body`를 살짝
+  흐리게(`opacity: 0.35`) 표시했다가 번역 적용과 동시에 서서히 되돌린다. 번역할
+  블록이 없거나 실패해도 화면이 계속 흐린 채로 남지 않도록 4초 안전 타임아웃이 있다.
+- **앱 실행 시 자동 업데이트 확인**: `MainActivity.onCreate`에서 조용히(Toast 없이)
+  한 번 확인하고, 새 버전이 있을 때만 다이얼로그를 띄운다. "업데이트 확인" 버튼은
+  그대로 있고, 버튼 클릭 시에는 진행 상황/실패 사유를 Toast로 알려준다.
+- **번역 캐시 자동 정리**: 앱 시작마다 30일(`TranslationCache.MAX_AGE_MILLIS`)보다
+  오래된 캐시 항목을 지운다. Room DB가 무한정 쌓이는 걸 방지.
+
 ## 다음 확장 방향
 
 - 언어 자동 감지 (현재는 드롭다운에서 수동 선택, 기본값 en→ko)
 - ML Kit → NLLB-200 등 커스텀 온디바이스 모델로 교체 (translation/ 폴더에 새 구현체만 추가하면 됨)
-- 텍스트가 늦게 로드되는 SPA/무한스크롤 사이트 대응 (MutationObserver로 새로 추가되는
-  블록도 감지해 번역하는 방식으로 `inline_translate.js` 확장)
-- 번역 중 원문이 잠깐 보이는 깜빡임(FOUC) 완화 (예: 번역 전 텍스트 살짝 흐리게 표시)
 - 블록 안 인라인 링크/강조 태그를 보존하면서 번역하는 방식 (현재는 블록 전체를
   순수 텍스트로 치환하므로 블록 내부 링크의 클릭 가능 영역이 사라짐)
+- 최근 방문 URL 히스토리/즐겨찾기
+- Cloud Translation 사용량(글자 수) 앱 내 표시 — 예상치 못한 과금 예방

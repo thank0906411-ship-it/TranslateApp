@@ -54,6 +54,12 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupLanguageSpinners()
 
+        lifecycleScope.launch(Dispatchers.IO) {
+            cache.deleteOlderThan(System.currentTimeMillis() - TranslationCache.MAX_AGE_MILLIS)
+        }
+
+        checkForUpdate(silent = true)
+
         binding.btnTranslate.setOnClickListener { loadFromInput() }
         binding.btnCheckUpdate.setOnClickListener { checkForUpdate() }
 
@@ -160,27 +166,38 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** GitHub Releases의 최신 릴리스를 확인하고, 새 버전이 있으면 다운로드/설치를 제안한다. */
-    private fun checkForUpdate() {
-        Toast.makeText(this, getString(R.string.update_checking), Toast.LENGTH_SHORT).show()
+    /**
+     * GitHub Releases의 최신 릴리스를 확인하고, 새 버전이 있으면 다운로드/설치를 제안한다.
+     * @param silent true면 앱 시작 시 자동 체크용 — "확인 중"/실패 Toast 없이 조용히 확인하고,
+     *   새 버전이 있을 때만 다이얼로그를 띄운다. 사용자가 버튼을 누른 경우(false)에만
+     *   진행 상황과 실패 사유를 Toast로 알려준다.
+     */
+    private fun checkForUpdate(silent: Boolean = false) {
+        if (!silent) {
+            Toast.makeText(this, getString(R.string.update_checking), Toast.LENGTH_SHORT).show()
+        }
 
         lifecycleScope.launch {
             try {
                 val update = withContext(Dispatchers.IO) { updateChecker.fetchLatestRelease() }
 
                 if (!updateChecker.isNewerThanCurrent(update)) {
-                    Toast.makeText(this@MainActivity, getString(R.string.update_none), Toast.LENGTH_SHORT).show()
+                    if (!silent) {
+                        Toast.makeText(this@MainActivity, getString(R.string.update_none), Toast.LENGTH_SHORT).show()
+                    }
                     return@launch
                 }
 
                 showUpdateDialog(update)
             } catch (e: Exception) {
                 Logger.e("업데이트 확인 실패", e)
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.update_check_failed, e.message ?: ""),
-                    Toast.LENGTH_LONG
-                ).show()
+                if (!silent) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.update_check_failed, e.message ?: ""),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }

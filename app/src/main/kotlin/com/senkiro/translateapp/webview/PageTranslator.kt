@@ -41,11 +41,18 @@ class PageTranslator(
 
     /**
      * 페이지 로드가 끝난 뒤 호출 — inline_translate.js를 매번 새로 주입해 텍스트 수집을 시작시킨다.
-     * SPA든 일반 네비게이션이든 새 페이지가 뜰 때마다 __translateAppInjected를 리셋해야
-     * 새 문서에 대해서도 스크립트가 다시 동작한다.
+     * onPageFinished는 실제 문서(URL)가 바뀔 때만 호출되므로, 이전 문서의 블록 참조/카운터/
+     * MutationObserver를 전부 리셋해야 한다 (그대로 두면 다른 문서의 DOM 참조가 남아 leak되거나,
+     * 새 문서인데 이미 번역된 블록으로 잘못 취급되어 새 콘텐츠가 번역되지 않을 수 있다).
      */
     fun onPageLoaded() {
-        val resetAndInject = "window.__translateAppInjected = false; $injectScript"
+        val resetAndInject = """
+            window.__translateAppInjected = false;
+            window.__tappBlockRefs = {};
+            window.__tappNextIndex = 0;
+            if (window.__tappObserver) { window.__tappObserver.disconnect(); window.__tappObserver = null; }
+            $injectScript
+        """.trimIndent()
         webView.evaluateJavascript(resetAndInject, null)
     }
 
