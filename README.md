@@ -246,6 +246,19 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
   이전에는 이 신호만 보고 무조건 설치 화면을 띄워, 불완전하거나 없는 파일로
   `PackageInstaller`를 여는 문제가 있었다. `DownloadManager.Query`로 실제
   `STATUS_SUCCESSFUL` 여부를 확인한 뒤에만 설치를 제안하고, 실패 시 Toast로 안내한다.
+- **셀룰러 환경에서 최초 번역이 멈추던 문제**: `MLKitTranslator.prepareModel`이
+  `DownloadConditions.requireWifi()`를 걸고 있어, 와이파이 없이 앱을 처음 쓰면
+  모델 다운로드 조건이 충족될 때까지 무한정 대기해 번역이 멈춘 것처럼 보였다.
+  모델 크기가 보통 몇 MB 수준이라 셀룰러 부담이 크지 않으므로 이 조건을 제거했다.
+- **공유하기 반복 시 화면이 계속 쌓이던 문제**: 다른 앱에서 '공유하기'로 URL을
+  보낼 때마다 `MainActivity`가 기본 `launchMode`(standard)로 새 인스턴스를
+  스택에 계속 쌓아, 반복 공유 시 뒤로가기를 여러 번 눌러야 했다.
+  `launchMode="singleTask"` + `onNewIntent`로 기존 인스턴스를 재사용하도록 수정.
+- **SPA에서 블록 요소 자체가 통째로 추가될 때 번역 누락**: `inline_translate.js`의
+  `MutationObserver`가 새로 추가된 노드를 `querySelectorAll`으로만 검사했는데,
+  이 API는 root 자신은 검사하지 않고 자손만 훑는다. SPA가 `<p>새 문단</p>`처럼
+  블록 요소 자체를 통째로 DOM에 추가하는 경우 그 블록이 후보에서 빠져 번역되지
+  않는 문제가 있어, root가 블록 셀렉터에 매칭되면 후보 목록에 root 자신도 포함하도록 수정.
 
 ## 다음 확장 방향
 

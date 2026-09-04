@@ -90,6 +90,17 @@ class MainActivity : AppCompatActivity() {
         handleShareIntent(intent)
     }
 
+    /**
+     * launchMode="singleTask"이므로 앱이 이미 실행 중일 때 다시 '공유하기'를 받으면
+     * 새 인스턴스가 쌓이는 대신 이 콜백으로 기존 인스턴스에 전달된다. setIntent로
+     * getIntent()가 반환할 값을 갱신해둬야 이후 다른 곳에서 참조할 때도 최신 인텐트를 본다.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
     private fun setupWebView() {
         val webView = binding.webView
         webView.settings.javaScriptEnabled = true

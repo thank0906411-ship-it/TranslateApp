@@ -27,7 +27,14 @@
   function collectBlocks(root) {
     var blocks = [];
 
-    root.querySelectorAll(BLOCK_SELECTOR).forEach(function (el) {
+    // querySelectorAll은 root 자신은 검사하지 않고 자손만 훑는다. SPA가 새 콘텐츠를
+    // DOM에 추가할 때 <p>새 문단</p>처럼 블록 요소 자체를 통째로 추가하는 경우가 흔한데,
+    // 이 경우 root(=그 <p>)가 후보에서 빠져 번역되지 않는 문제가 있어 root 자신도 함께 검사한다.
+    var candidates = root.matches && root.matches(BLOCK_SELECTOR)
+      ? [root].concat(Array.prototype.slice.call(root.querySelectorAll(BLOCK_SELECTOR)))
+      : Array.prototype.slice.call(root.querySelectorAll(BLOCK_SELECTOR));
+
+    candidates.forEach(function (el) {
       if (el.hasAttribute('data-tapp-id')) return;
       if (el.closest('[contenteditable="true"]')) return;
       if (!hasMeaningfulText(el)) return;

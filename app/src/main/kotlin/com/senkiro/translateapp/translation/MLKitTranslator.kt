@@ -58,9 +58,11 @@ class MLKitTranslator : TranslationEngine {
 
     override suspend fun prepareModel(sourceLang: String, targetLang: String): Unit = mutex.withLock {
         val translator = getOrCreateTranslator(sourceLang, targetLang)
-        val conditions = DownloadConditions.Builder()
-            .requireWifi() // 최초 다운로드만 와이파이 권장. 다운로드 후엔 완전 오프라인 동작.
-            .build()
+        // requireWifi()는 쓰지 않는다 — 이 조건을 걸면 셀룰러만 있는 사용자는 조건이
+        // 충족될 때까지 downloadModelIfNeeded()가 완료되지 않고 하염없이 대기하게 되어,
+        // 번역이 영원히 멈춘 것처럼 보이는 문제가 생긴다. 모델 크기가 보통 몇 MB 수준이라
+        // 셀룰러로 받아도 부담이 크지 않으므로, 조건 없이 즉시 다운로드를 허용한다.
+        val conditions = DownloadConditions.Builder().build()
         translator.downloadModelIfNeeded(conditions).await()
         Unit
     }
