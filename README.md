@@ -176,6 +176,22 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
 - **번역 캐시 자동 정리**: 앱 시작마다 30일(`TranslationCache.MAX_AGE_MILLIS`)보다
   오래된 캐시 항목을 지운다. Room DB가 무한정 쌓이는 걸 방지.
 
+## 안정성 개선
+
+- **번역 동시성 안전성**: SPA 대응(MutationObserver)으로 여러 블록의 번역 요청이 짧은
+  시간에 겹쳐 들어올 수 있게 되면서, `MLKitTranslator`가 캐시해둔 번역기 인스턴스를
+  락 없이 교체/조회하면 한 요청이 언어쌍 A용으로 막 교체한 번역기를 다른 요청이
+  언어쌍 B로 오해하고 쓰는 경쟁 조건이 생길 수 있었다. `Mutex`로 "번역기 조회/교체 +
+  실제 번역"을 하나의 임계 구역으로 묶어 방지한다(대가로 완전한 병렬 번역은 안 됨).
+- **다운로드 리시버 leak 방지**: 앱 업데이트 다운로드 중 `Activity`가 소멸되면
+  `BroadcastReceiver`가 해제되지 않고 남을 수 있었다. `AppUpdateChecker.
+  unregisterDownloadReceiver()`를 `MainActivity.onDestroy()`에서 호출해 정리한다.
+- **Cloud Translation 오류 구분**: 이전에는 429(요청 과다)든 403(키 무효화·결제
+  계정 문제)이든 네트워크 단절이든 전부 동일하게 "조용히 ML Kit으로 폴백"해서,
+  사용자가 계속 온디바이스 번역만 받고 있다는 걸 알 방법이 없었다. 이제
+  `GoogleTranslateException`으로 원인을 구분해, 429/403일 때만 세션당 한 번
+  Toast로 알려준다(그 외 일반 오류는 여전히 조용히 폴백).
+
 ## 다음 확장 방향
 
 - 언어 자동 감지 (현재는 드롭다운에서 수동 선택, 기본값 en→ko)

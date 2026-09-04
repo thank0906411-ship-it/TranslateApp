@@ -33,6 +33,9 @@ class AppUpdateChecker(private val context: Context) {
 
     private val client = OkHttpClient.Builder().build()
 
+    /** 다운로드 완료 리시버. Activity가 소멸될 때(cancelPendingDownload) 해제해 leak을 막는다. */
+    private var downloadReceiver: BroadcastReceiver? = null
+
     companion object {
         // "owner/repo" 형식.
         private const val GITHUB_REPO = "thank0906411-ship-it/TranslateApp"
@@ -116,15 +119,20 @@ class AppUpdateChecker(private val context: Context) {
 
         val downloadId = downloadManager.enqueue(request)
 
+        // 이전에 등록해둔 리시버가 아직 남아있으면(예: 직전 다운로드가 완료 전에 취소된 경우)
+        // 먼저 정리하고 새로 등록한다 — 리시버가 중복 등록되는 것을 방지.
+        unregisterDownloadReceiver()
+
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (id != downloadId) return
-                context.unregisterReceiver(this)
+                unregisterDownloadReceiver()
                 promptInstall(destFile)
                 onComplete()
             }
         }
+        downloadReceiver = receiver
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.registerReceiver(
@@ -136,6 +144,21 @@ class AppUpdateChecker(private val context: Context) {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
         }
+    }
+
+    /**
+     * 등록된 다운로드 완료 리시버가 있으면 해제한다. 다운로드가 끝났을 때 스스로도 호출하지만,
+     * Activity가 다운로드 완료 전에 소멸되는 경우(onDestroy)에도 호출해 리시버 leak을 막아야 한다.
+     */
+    fun unregisterDownloadReceiver() {
+        downloadReceiver?.let {
+            try {
+                context.unregisterReceiver(it)
+            } catch (e: IllegalArgumentException) {
+                // 이미 해제된 리시버 — 무시해도 안전하다.
+            }
+        }
+        downloadReceiver = null
     }
 
     private fun promptInstall(apkFile: File) {

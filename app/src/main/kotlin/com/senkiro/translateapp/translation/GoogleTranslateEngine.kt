@@ -11,6 +11,18 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
+ * Cloud Translation API 호출이 HTTP 오류로 실패했을 때, 원인을 구분할 수 있도록 상태
+ * 코드를 함께 담는 예외. FallbackTranslator가 이 중 QUOTA_EXCEEDED(429)와
+ * FORBIDDEN(403, 결제 계정 문제·키 무효화 등)을 사용자에게 1회성으로 알리는 데 쓴다.
+ * 그 외(네트워크 단절 등 일반 IOException)는 조용히 ML Kit으로 폴백한다.
+ */
+sealed class GoogleTranslateException(message: String) : IOException(message) {
+    class QuotaExceeded(message: String) : GoogleTranslateException(message)
+    class Forbidden(message: String) : GoogleTranslateException(message)
+    class Other(message: String) : GoogleTranslateException(message)
+}
+
+/**
  * Google Cloud Translation API(v2) 기반 번역기. ML Kit 온디바이스 모델보다
  * 훨씬 큰 서버급 신경망 모델이라 문맥/어투 일관성이 크게 좋다.
  *
@@ -53,7 +65,14 @@ class GoogleTranslateEngine : TranslationEngine {
         client.newCall(request).execute().use { response ->
             val responseBody = response.body?.string() ?: throw IOException("빈 응답")
             if (!response.isSuccessful) {
-                throw IOException("Cloud Translation API 오류 (HTTP ${response.code}): $responseBody")
+                val message = "Cloud Translation API 오류 (HTTP ${response.code}): $responseBody"
+                throw when (response.code) {
+                    429 -> GoogleTranslateException.QuotaExceeded(message)
+                    // 403은 키 자체가 무효화됐거나, 결제 계정 미설정/정지 등으로 API가
+                    // 거부하는 경우다. 429(일시적 과다 요청)와는 원인이 다르므로 구분한다.
+                    403 -> GoogleTranslateException.Forbidden(message)
+                    else -> GoogleTranslateException.Other(message)
+                }
             }
             return JSONObject(responseBody)
                 .getJSONObject("data")
@@ -68,10 +87,16 @@ class GoogleTranslateEngine : TranslationEngine {
  * GoogleTranslateEngine을 우선 시도하고, 키 미설정이나 네트워크/API 오류 시
  * mlKitFallback으로 자동 전환하는 래퍼. MainActivity 등 호출부는 이 클래스만
  * TranslationEngine으로 바라보면 되고, 어느 엔진이 실제로 쓰였는지는 신경 쓸 필요 없다.
+ *
+ * @param onQuotaOrAccessIssue 429(일시적 과다 요청)나 403(키 무효화·결제 계정 문제)으로
+ *   Cloud Translation 호출이 실패했을 때 호출된다. 이 상황은 네트워크 단절과 달리
+ *   사용자가 알아야 할 상태(계속 ML Kit으로만 번역되고 있다는 뜻)이므로, 매 블록마다
+ *   반복 호출하지 않고 세션당 한 번만 알리도록 호출부(MainActivity)에서 처리한다.
  */
 class FallbackTranslator(
     private val primary: GoogleTranslateEngine,
-    private val mlKitFallback: MLKitTranslator
+    private val mlKitFallback: MLKitTranslator,
+    private val onQuotaOrAccessIssue: (GoogleTranslateException) -> Unit = {}
 ) : TranslationEngine {
 
     private fun usePrimary() = primary.isConfigured
@@ -92,6 +117,9 @@ class FallbackTranslator(
                 return primary.translate(text, sourceLang, targetLang)
             } catch (e: Exception) {
                 Logger.e("Cloud Translation 실패, ML Kit으로 폴백", e)
+                if (e is GoogleTranslateException.QuotaExceeded || e is GoogleTranslateException.Forbidden) {
+                    onQuotaOrAccessIssue(e as GoogleTranslateException)
+                }
                 mlKitFallback.prepareModel(sourceLang, targetLang)
             }
         }

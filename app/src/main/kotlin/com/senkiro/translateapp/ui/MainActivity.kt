@@ -17,6 +17,7 @@ import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.databinding.ActivityMainBinding
 import com.senkiro.translateapp.translation.FallbackTranslator
 import com.senkiro.translateapp.translation.GoogleTranslateEngine
+import com.senkiro.translateapp.translation.GoogleTranslateException
 import com.senkiro.translateapp.translation.LanguageOption
 import com.senkiro.translateapp.translation.MLKitTranslator
 import com.senkiro.translateapp.translation.SupportedLanguages
@@ -38,10 +39,13 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
-    private val translator = FallbackTranslator(GoogleTranslateEngine(), MLKitTranslator())
+    private lateinit var translator: FallbackTranslator
     private lateinit var cache: TranslationCache
     private lateinit var updateChecker: AppUpdateChecker
     private lateinit var pageTranslator: PageTranslator
+
+    /** 세션(앱 실행) 중 한 번만 Cloud Translation 과금/권한 문제를 알리기 위한 플래그. */
+    private var hasWarnedAboutCloudTranslateIssue = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +54,9 @@ class MainActivity : AppCompatActivity() {
 
         cache = TranslationCache(applicationContext)
         updateChecker = AppUpdateChecker(applicationContext)
+        translator = FallbackTranslator(GoogleTranslateEngine(), MLKitTranslator()) { issue ->
+            runOnUiThread { warnAboutCloudTranslateIssue(issue) }
+        }
 
         setupWebView()
         setupLanguageSpinners()
@@ -162,8 +169,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        updateChecker.unregisterDownloadReceiver()
         binding.webView.destroy()
         super.onDestroy()
+    }
+
+    /**
+     * Cloud Translation이 429(요청 과다)나 403(키 무효화·결제 계정 문제)으로 계속
+     * 실패하면, 사용자는 눈치채지 못한 채 계속 ML Kit으로만 번역을 받게 된다.
+     * 세션당 한 번만 알려서 반복 알림으로 거슬리지 않게 한다.
+     */
+    private fun warnAboutCloudTranslateIssue(issue: GoogleTranslateException) {
+        if (hasWarnedAboutCloudTranslateIssue) return
+        hasWarnedAboutCloudTranslateIssue = true
+
+        val reason = when (issue) {
+            is GoogleTranslateException.QuotaExceeded -> getString(R.string.cloud_translate_quota_exceeded)
+            is GoogleTranslateException.Forbidden -> getString(R.string.cloud_translate_forbidden)
+            is GoogleTranslateException.Other -> return
+        }
+        Toast.makeText(this, reason, Toast.LENGTH_LONG).show()
     }
 
     /**
