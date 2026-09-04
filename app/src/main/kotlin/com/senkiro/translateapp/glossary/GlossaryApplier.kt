@@ -41,10 +41,16 @@ class GlossaryApplier(private val terms: List<GlossaryTerm>) {
         return result to placeholderToTarget
     }
 
-    /** 번역 결과에서 플레이스홀더를 고정 번역어로 되돌린다. */
-    fun restorePlaceholders(translatedText: String, placeholderToTarget: Map<String, String>): String {
+    /**
+     * 번역 결과에서 플레이스홀더를 고정 번역어로 되돌린다.
+     * @return 복원된 텍스트. 번역기가 플레이스홀더 기호(⟦, ⟧)를 변형해버려(유니코드
+     *   정규화, 주변 공백 삽입 등) 하나라도 복원하지 못하면 null을 반환한다 —
+     *   호출부가 이 경우 "⟦0⟧"이 그대로 노출된 결과 대신 안전하게 폴백할 수 있게 한다.
+     */
+    fun restorePlaceholders(translatedText: String, placeholderToTarget: Map<String, String>): String? {
         var result = translatedText
         for ((placeholder, target) in placeholderToTarget) {
+            if (!result.contains(placeholder)) return null
             result = result.replace(placeholder, target)
         }
         return result

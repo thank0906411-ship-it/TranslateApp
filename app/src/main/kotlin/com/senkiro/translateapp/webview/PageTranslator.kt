@@ -127,7 +127,12 @@ class PageTranslator(
                         // 결과와 새 복원 매핑이 어긋날 수 있어 정확성을 우선해 캐시를 건너뛴다.
                         // LLM 후처리 대상에서도 제외한다 — 후처리가 고정 번역어를 다시 바꿔버릴 수 있다.
                         val translated = engine.translate(textToTranslate, sourceLang, targetLang)
-                        idToTranslated[id] = applier.restorePlaceholders(translated, placeholders)
+                        val restored = applier.restorePlaceholders(translated, placeholders)
+                        idToTranslated[id] = restored
+                            // 번역기가 플레이스홀더 기호를 변형해 복원에 실패하면(드묾),
+                            // "⟦0⟧"이 그대로 노출되는 것보다는 용어집 없이 원문을 다시
+                            // 번역한 결과를 보여주는 편이 훨씬 안전하다.
+                            ?: engine.translate(originalText, sourceLang, targetLang)
                     }
                 }
 
