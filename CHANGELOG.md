@@ -4,30 +4,49 @@
 
 ## 저장소 public 전환 대응
 
-- **공개 release APK에서 유료/민감 키 제거**: 여러 명에게 테스트를 부탁하기 위해
-  저장소를 private에서 public으로 전환했는데, `release.yml`이 `GOOGLE_TRANSLATE_API_KEY`
-  (과금되는 Cloud Translation 키)와 `UPDATE_CHECK_PAT`를 그대로 release APK에 주입하고
-  있어서 누구나 다운로드해 디컴파일하면 두 키가 그대로 노출되는 문제가 있었다.
-  결제 자체는 막아뒀어도 무료 할당량 소진이나 키 정지 위험은 남으므로,
-  `release.yml`에서 두 Secrets 주입을 제거해 공개 APK는 항상 ML Kit 온디바이스
-  번역만으로 빌드되도록 했다. 이에 맞춰 `AppUpdateChecker`가 PAT가 비어 있으면
-  `Authorization` 헤더 자체를 생략하도록 수정했다 — 빈 문자열로 `Bearer `를 그대로
-  보내면 GitHub API가 401을 반환하므로, 헤더를 아예 안 붙이는 것과는 다르게
-  동작해야 한다(public repo는 인증 없이도 Releases API 호출이 가능하므로 헤더
-  생략이 안전하게 동작함). Claude/GPT LLM 후처리 키는 애초에 `release.yml`에
-  주입된 적이 없어 이번 문제와 무관했다.
+- **(v20) 공개 release APK에서 유료/민감 키 제거**: 여러 명에게 테스트를 부탁하기
+  위해 저장소를 private에서 public으로 전환했는데, `release.yml`이
+  `GOOGLE_TRANSLATE_API_KEY`(과금되는 Cloud Translation 키)와 `UPDATE_CHECK_PAT`를
+  그대로 release APK에 주입하고 있어서 누구나 다운로드해 디컴파일하면 두 키가
+  그대로 노출되는 문제가 있었다. `release.yml`에서 두 Secrets 주입을 제거해
+  공개 APK는 ML Kit 온디바이스 번역만으로 빌드되도록 했다. 이에 맞춰
+  `AppUpdateChecker`가 PAT가 비어 있으면 `Authorization` 헤더 자체를 생략하도록
+  수정했다 — 빈 문자열로 `Bearer `를 그대로 보내면 GitHub API가 401을 반환하므로,
+  헤더를 아예 안 붙이는 것과는 다르게 동작해야 한다(public repo는 인증 없이도
+  Releases API 호출이 가능하므로 헤더 생략이 안전하게 동작함).
+- **(이후 재도입) `GOOGLE_TRANSLATE_API_KEY`만 공개 빌드에 다시 포함**: ML Kit만으로는
+  테스트 시 번역 품질이 아쉽다는 판단으로, Cloud Translation 키는 결제 수단을
+  막아둔 상태로 다시 `release.yml`에 주입하기로 결정했다. 무료 할당량 소진이나
+  키 정지 위험은 감수한 것이며, 금전 피해가 없다는 점에서 `UPDATE_CHECK_PAT`
+  (public repo에서 애초에 불필요)나 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`
+  (결제 방어 수단이 없어 위험이 더 큼)와는 다르게 취급한다 — 이 세 개는 계속
+  공개 빌드에서 제외한다.
+
+## 업데이트 안내 개선
+
+- **"업데이트 확인" 다이얼로그에 실제 변경 내용이 안 보이던 문제**: GitHub Release
+  본문을 `generate_release_notes: true`(GitHub 자동 생성, PR 제목 기반)로 채우고
+  있었는데, 이 저장소는 PR 없이 태그만 push하는 방식이라 실제로는 "Full
+  Changelog 비교 링크" 한 줄만 생성되고 무엇이 바뀌었는지는 전혀 드러나지
+  않았다(사용자가 앱에서 업데이트를 눌러도 뭐가 바뀐 건지 알 수 없었음).
+  `release.yml`에 직전 태그 이후의 커밋 메시지(제목+본문)를 모아 Release
+  본문으로 채우는 스텝을 추가했다 — `MainActivity.showUpdateDialog`가 이미
+  `update.releaseNotes`를 다이얼로그에 그대로 보여주고 있었으므로, 이제부터는
+  커밋 메시지를 신경 써서 쓰면 그대로 사용자에게 노출된다.
 
 ## 네트워크 보안
 
-- **전역 cleartext(평문 HTTP) 허용 범위 축소**: `AndroidManifest.xml`이
-  `usesCleartextTraffic="true"`로 모든 도메인에 대해 평문 HTTP를 허용하고
-  있었다. WebView로 사용자가 입력한 임의의 사이트(구식 HTTP 사이트 포함)를
-  열어야 하니 완전히 막을 수는 없지만, 앱 자체가 통신하는 API 도메인
-  (`api.github.com`, `translation.googleapis.com`, `api.anthropic.com`,
-  `api.openai.com`)까지 이 예외에 함께 포함되어 있어 다운그레이드 공격
-  표면이 불필요하게 넓었다. `network_security_config.xml`을 추가해 이
-  API 도메인들만 `cleartextTrafficPermitted="false"`로 명시적으로
-  차단하고, 그 외(WebView가 여는 임의 사이트)는 기존처럼 허용되도록 했다.
+- **(v21에서 도입 후 v22에서 롤백됨) 전역 cleartext(평문 HTTP) 허용 범위 축소 시도**:
+  `AndroidManifest.xml`의 `usesCleartextTraffic="true"`가 모든 도메인에 평문
+  HTTP를 허용하고 있어, 앱 자체 API 도메인만이라도 HTTPS를 강제하려고
+  `network_security_config.xml`(`android:networkSecurityConfig` 연결)을
+  추가했다. 하지만 배포 직후 **번역 자체가 전혀 동작하지 않는 심각한 회귀**가
+  보고되었다 — WebView/기기 조합에서 `networkSecurityConfig`가 예상과 다르게
+  네트워크 요청 전반을 방해한 것으로 추정된다(정확한 원인은 아직 미확정).
+  v22에서 `AndroidManifest.xml`의 `android:networkSecurityConfig` 속성 연결만
+  즉시 되돌렸다(`network_security_config.xml` 파일 자체는 참고용으로 남겨둠).
+  **주의**: 이 설정을 다시 시도하려면 실기기에서 WebView 번역이 정상 동작하는지
+  반드시 먼저 검증해야 한다.
 
 ## 다크모드 표시 문제
 

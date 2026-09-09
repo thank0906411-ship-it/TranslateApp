@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+# 릴리스 노트를 만들 때 직전 태그를 찾아야 하므로 전체 히스토리가 필요하다
+# (fetch-depth: 0 없이는 checkout이 최신 커밋 하나만 받아온다).
+
 permissions:
   contents: write
 
@@ -14,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -36,13 +41,15 @@ jobs:
 
       - name: Write local.properties
         # 이 저장소는 public이라 여기서 만든 release APK를 누구나 다운로드해 디컴파일할
-        # 수 있다. GOOGLE_TRANSLATE_API_KEY(과금되는 Cloud Translation 키)와
-        # UPDATE_CHECK_PAT를 여기 넣으면 APK 안에 평문으로 박혀 유출되므로, 공개 빌드에는
-        # 절대 주입하지 않는다. 키가 없으면 FallbackTranslator가 자동으로 ML Kit
-        # 온디바이스 번역으로 동작하고, public repo는 인증 없이도 Releases API를 호출할
-        # 수 있어 업데이트 확인 기능도 PAT 없이 정상 동작한다. 고품질 번역이 필요하면
-        # 로컬 local.properties에 본인 키를 넣어 직접 빌드해서 쓴다.
-        run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
+        # 수 있다. GOOGLE_TRANSLATE_API_KEY는 결제 수단을 막아둔 상태라 금전 피해는
+        # 없지만, 무료 할당량 소진이나 키 정지 위험은 남아 있음을 감수하고 테스터들이
+        # 더 자연스러운 번역을 체험할 수 있도록 의도적으로 다시 주입한다. 없으면
+        # FallbackTranslator가 자동으로 ML Kit 온디바이스 번역으로 폴백한다.
+        # UPDATE_CHECK_PAT는 public repo에서는 필요 없으므로(인증 없이도 Releases API
+        # 호출 가능) 계속 주입하지 않는다.
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          echo "GOOGLE_TRANSLATE_API_KEY=${{ secrets.GOOGLE_TRANSLATE_API_KEY }}" >> local.properties
 
       - name: Verify tag matches versionCode
         run: |
@@ -66,8 +73,28 @@ jobs:
           APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n1)
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
+      - name: Build release notes from commit messages
+        # generate_release_notes(GitHub 자동 생성)는 PR 제목 기반이라, PR 없이 태그만
+        # push하는 이 저장소에서는 "Full Changelog 비교 링크"만 나오고 실제로 무엇이
+        # 바뀌었는지는 전혀 보여주지 않았다. 앱 내 "업데이트 확인" 다이얼로그가 이
+        # 릴리스의 body를 그대로 보여주므로, 직전 태그 이후의 커밋 메시지(제목+본문,
+        # "Co-Authored-By" 트레일러는 제외)를 그대로 모아 사람이 읽을 수 있는 내용으로 채운다.
+        id: notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="${GITHUB_REF_NAME}"
+          else
+            RANGE="$PREV_TAG..${GITHUB_REF_NAME}"
+          fi
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            git log "$RANGE" --reverse --format='%B%n---' | grep -v '^Co-Authored-By:'
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.apk.outputs.path }}
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.notes }}

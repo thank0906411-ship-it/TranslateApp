@@ -80,9 +80,10 @@ GOOGLE_TRANSLATE_API_KEY=본인의_API_키
   무료, 이후 과금.
 - 키를 넣지 않고 빌드하거나 호출이 실패하면 자동으로 ML Kit으로 전환되므로
   언제나 안전하게 켜고 끌 수 있다.
-- **GitHub Actions로 빌드되는 공개 release APK에는 이 키가 절대 들어가지 않는다**
-  (`release.yml`이 의도적으로 주입하지 않음 — 자세한 내용은
-  [배포하기](#배포하기) 참고). 로컬 빌드에서 `local.properties`에 넣었을 때만 적용된다.
+- **GitHub Actions로 빌드되는 공개 release APK에도 이 키가 포함된다**(결제
+  수단은 막아둔 GitHub Secrets 값을 주입 — 디컴파일 시 이 키 자체는 노출되지만
+  금전 피해는 없다. 다만 무료 할당량 소진이나 키 정지 위험은 감수한 것이다.
+  자세한 내용은 [배포하기](#배포하기) 참고).
 
 ### 2. LLM 후처리 (Claude/GPT, 페이지 문맥 다듬기)
 
@@ -181,14 +182,14 @@ Play Store 없이도 앱 안에서 "업데이트 확인" 버튼으로 새 버전
 인증 없이도 Releases API 호출과 asset 다운로드가 되므로, `AppUpdateChecker`는
 `BuildConfig.GITHUB_UPDATE_PAT`가 비어 있으면 `Authorization` 헤더 자체를 생략한다.
 
-> ⚠️ **공개 빌드에는 유료/민감 키를 절대 넣지 않는다.** 이 repo가 public이 된
-> 이상, GitHub Actions로 빌드되는 release APK는 누구나 다운로드해 디컴파일할 수
-> 있다. `release.yml`은 이를 감안해 `GOOGLE_TRANSLATE_API_KEY`(과금되는 Cloud
-> Translation 키)와 `GITHUB_UPDATE_PAT`를 **의도적으로 빌드에 주입하지 않는다.**
-> 공개 배포 APK는 항상 ML Kit 온디바이스 번역만으로 동작하며, 이는 버그가 아니라
-> 키 유출을 막기 위한 설계다. 본인만 쓰는 고품질 번역이 필요하면 로컬
-> `local.properties`에 키를 넣어 직접 빌드한다(GitHub Secrets에는 그대로 등록해둬도
-> 되지만, `release.yml`이 그 값을 읽지 않으므로 공개 APK에는 영향이 없다).
+> ⚠️ **공개 빌드에 넣는 키는 신중하게 고른다.** 이 repo가 public이 된 이상,
+> GitHub Actions로 빌드되는 release APK는 누구나 다운로드해 디컴파일할 수 있어
+> 그 안에 든 키는 그대로 노출된다. `release.yml`은 `GOOGLE_TRANSLATE_API_KEY`
+> (Cloud Translation 키 — 결제 수단을 막아둬서 금전 피해는 없지만 무료 할당량
+> 소진·키 정지 위험은 있음을 감수하고 의도적으로 주입)는 넣고, `GITHUB_UPDATE_PAT`
+> (public repo에서는 애초에 불필요)와 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`
+> (LLM 후처리, 결제 방어 수단이 없어 위험이 더 큼)는 **절대 넣지 않는다.**
+> 본인만 쓰는 로컬 빌드는 `local.properties`에 원하는 키를 자유롭게 넣어 쓴다.
 
 ### 새 버전 배포 절차 (GitHub Actions 자동 빌드)
 
@@ -197,6 +198,9 @@ APK를 빌드하고 서명한 뒤 GitHub Release로 올린다. 로컬에 Android
 태그만 push하면 된다.
 
 1. `app/build.gradle.kts`에서 `versionCode`를 올리고 `versionName`도 갱신 후 커밋.
+   **커밋 메시지를 신경 써서 쓴다** — 직전 태그 이후의 커밋 메시지(제목+본문)가
+   그대로 GitHub Release의 설명과 앱 내 "업데이트 확인" 다이얼로그에 노출되므로,
+   "무엇이/왜 바뀌었는지" 사용자가 읽어서 이해할 수 있게 적어야 한다.
 2. **태그 이름에 반드시 versionCode와 같은 숫자가 포함되어야 한다**
    (예: versionCode 2라면 태그는 `v2`). 워크플로우가 이 일치 여부를 빌드 전에
    검증하고, 틀리면 빌드를 실패시킨다.
@@ -225,10 +229,11 @@ variables → Actions에 아래를 등록한다.
 | `RELEASE_KEY_ALIAS` | 키 별칭 |
 | `RELEASE_KEY_PASSWORD` | 키 비밀번호 (PKCS12는 keystore 비밀번호와 동일) |
 
-`GOOGLE_TRANSLATE_API_KEY`/`UPDATE_CHECK_PAT`는 `release.yml`이 읽지 않으므로
-GitHub Secrets에 등록할 필요가 없다(등록해도 무시된다). 로컬에서 고품질 번역을
-쓰고 싶을 때만 `local.properties`에 같은 이름으로 넣으면 된다. `.gitignore`에
-걸려 있어 커밋되지 않는다.
+`GOOGLE_TRANSLATE_API_KEY`도 등록해두면 `release.yml`이 읽어서 공개 release
+APK에 포함시킨다(위 경고 참고). `UPDATE_CHECK_PAT`는 `release.yml`이 읽지
+않으므로 등록할 필요가 없다(등록해도 무시된다). 로컬 빌드에서 키를 쓰고 싶을
+때는 `local.properties`에 같은 이름으로 넣으면 된다. `.gitignore`에 걸려 있어
+커밋되지 않는다.
 
 keystore 파일 자체와 비밀번호는 **절대 저장소에 커밋하지 않는다.** 로컬에서 새로
 만들려면:
