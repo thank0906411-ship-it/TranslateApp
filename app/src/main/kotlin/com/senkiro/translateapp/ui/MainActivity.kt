@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
 
     private lateinit var translator: FallbackTranslator
+    private lateinit var mlKitTranslator: MLKitTranslator
     private lateinit var cache: TranslationCache
     private lateinit var glossary: Glossary
     private lateinit var history: History
@@ -83,9 +84,10 @@ class MainActivity : AppCompatActivity() {
         history = History(applicationContext)
         usageTracker = UsageTracker(applicationContext)
         updateChecker = AppUpdateChecker(applicationContext)
+        mlKitTranslator = MLKitTranslator()
         translator = FallbackTranslator(
             primary = GoogleTranslateEngine(),
-            mlKitFallback = MLKitTranslator(),
+            mlKitFallback = mlKitTranslator,
             onQuotaOrAccessIssue = { issue -> runOnUiThread { warnAboutCloudTranslateIssue(issue) } },
             onCloudTranslateSuccess = { charCount -> usageTracker.addCloudTranslateChars(charCount) }
         )
@@ -296,6 +298,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         updateChecker.unregisterDownloadReceiver()
+        // ML Kit Translator는 네이티브 리소스를 들고 있는데, 언어쌍이 바뀔 때는
+        // 내부적으로 이전 것을 자동으로 닫아주지만 Activity가 완전히 소멸될 때 마지막으로
+        // 캐시된 번역기는 아무도 닫아주지 않으므로 여기서 명시적으로 해제한다.
+        mlKitTranslator.close()
         binding.webView.destroy()
         super.onDestroy()
     }

@@ -71,4 +71,15 @@ class MLKitTranslator : TranslationEngine {
         val translator = getOrCreateTranslator(sourceLang, targetLang)
         translator.translate(text).await()
     }
+
+    /**
+     * 캐시해둔 Translator(네이티브 리소스를 들고 있음)를 해제한다. 언어쌍이 바뀔 때는
+     * getOrCreateTranslator가 이전 것을 자동으로 닫아주지만, Activity가 완전히 소멸될 때
+     * 마지막으로 캐시된 번역기는 아무도 닫아주지 않으므로 호출부(MainActivity.onDestroy)가
+     * 명시적으로 호출해야 한다.
+     */
+    fun close() {
+        cachedTranslator?.close()
+        cachedTranslator = null
+    }
 }
