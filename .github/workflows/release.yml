@@ -77,8 +77,9 @@ jobs:
         # generate_release_notes(GitHub 자동 생성)는 PR 제목 기반이라, PR 없이 태그만
         # push하는 이 저장소에서는 "Full Changelog 비교 링크"만 나오고 실제로 무엇이
         # 바뀌었는지는 전혀 보여주지 않았다. 앱 내 "업데이트 확인" 다이얼로그가 이
-        # 릴리스의 body를 그대로 보여주므로, 직전 태그 이후의 커밋 메시지(제목+본문,
-        # "Co-Authored-By" 트레일러는 제외)를 그대로 모아 사람이 읽을 수 있는 내용으로 채운다.
+        # 릴리스의 body를 그대로 보여주므로, 커밋 본문 전체(배경/이유 설명 포함)를
+        # 넣으면 사용자 입장에서 너무 길다 — 직전 태그 이후의 커밋 제목(첫 줄)만
+        # 모아 간단한 불릿 목록으로 채운다.
         id: notes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
@@ -89,7 +90,7 @@ jobs:
           fi
           {
             echo "notes<<RELEASE_NOTES_EOF"
-            git log "$RANGE" --reverse --format='%B%n---' | grep -v '^Co-Authored-By:'
+            git log "$RANGE" --reverse --format='- %s'
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
