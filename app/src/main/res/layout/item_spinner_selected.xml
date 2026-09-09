@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    스피너가 닫혀 있을 때(선택된 항목) 보여주는 뷰. android.R.layout.simple_spinner_item은
+    AOSP 프레임워크 리소스라 Theme.MaterialComponents.DayNight의 다크모드 색상 체계를
+    따르지 않고 라이트 테마 기준 어두운 텍스트 색을 그대로 써서, 다크모드에서 어두운
+    배경에 어두운 글자가 겹쳐 안 보이는 문제가 있었다(용어집/업데이트 버튼과 같은 원인).
+    textColorPrimary를 명시해 테마를 정확히 따르도록 한다.
+-->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="?android:attr/listPreferredItemHeightSmall"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:gravity="center_vertical"
+    android:textAppearance="?android:attr/textAppearanceListItemSmall"
+    android:textColor="?android:attr/textColorPrimary"
+    android:ellipsize="end"
+    android:singleLine="true" />

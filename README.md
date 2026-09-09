@@ -266,6 +266,13 @@ base64 -w0 release.keystore   # 이 출력값을 RELEASE_KEYSTORE_BASE64에 등�
 
 ## 안정성 개선
 
+- **다크모드에서 언어 선택 드롭다운 글자가 안 보이던 문제**: 출발어/도착어 `Spinner`가
+  `android.R.layout.simple_spinner_dropdown_item`(AOSP 프레임워크 리소스)을 그대로
+  써서, "업데이트 확인"/"용어집" 버튼과 같은 원인(`Theme.MaterialComponents.DayNight`의
+  다크모드 색상 체계를 안 따르고 라이트 테마 기준 어두운 텍스트 색을 고정으로 씀)으로
+  다크모드에서 어두운 배경에 어두운 글자가 겹쳐 안 보였다. `textColorPrimary`를 명시한
+  커스텀 레이아웃(`item_spinner_selected.xml`/`item_spinner_dropdown.xml`)으로 교체해
+  테마를 정확히 따르도록 수정.
 - **번역 실패 감지의 숫자/기호 오탐**: "원문=번역문이면 번역 실패"로 보는 감지 로직이
   "2024", "100원"처럼 글자(letter)가 아예 없는 블록까지 실패로 오판해, 그런 블록마다
   불필요한 ML Kit 재시도가 실행되고 화면에 빨간 밑줄이 남발되는 문제가 있었다.

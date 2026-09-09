@@ -180,9 +180,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupLanguageSpinners() {
+        // android.R.layout.simple_spinner_dropdown_item(AOSP 프레임워크 리소스)은 다크모드에서
+        // 텍스트 색이 안 보이는 문제가 있어(업데이트 확인/용어집 버튼과 같은 원인), 테마의
+        // textColorPrimary를 명시적으로 따르는 커스텀 레이아웃(item_spinner_selected/dropdown)을 쓴다.
         fun newAdapter() =
-            ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, SupportedLanguages.ALL).also {
-                it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            ArrayAdapter(this, R.layout.item_spinner_selected, SupportedLanguages.ALL).also {
+                it.setDropDownViewResource(R.layout.item_spinner_dropdown)
             }
 
         binding.spinnerSourceLang.adapter = newAdapter()

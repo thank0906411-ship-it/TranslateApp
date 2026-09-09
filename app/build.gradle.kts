@@ -30,8 +30,8 @@ android {
         applicationId = "com.senkiro.translateapp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 18
-        versionName = "18.0"
+        versionCode = 19
+        versionName = "19.0"
         buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"$googleTranslateApiKey\"")
         buildConfigField("String", "GITHUB_UPDATE_PAT", "\"$githubUpdatePat\"")
         buildConfigField("String", "ANTHROPIC_API_KEY", "\"$anthropicApiKey\"")
