@@ -187,16 +187,13 @@ class MainActivity : AppCompatActivity() {
         // 않는 심각한 회귀가 발생해 v18까지 검증됐던 표준 리소스로 롤백했다. 다크모드에서
         // 텍스트 색이 흐릿하게 보일 수 있는 문제는 남아있지만, 최소한 번역 기능은
         // 확실하게 동작해야 하므로 이 리소스를 우선한다.
-        fun newAdapter() =
+        val adapter =
             ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, SupportedLanguages.ALL).also {
                 it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
 
-        binding.spinnerSourceLang.adapter = newAdapter()
+        binding.spinnerSourceLang.adapter = adapter
         binding.spinnerSourceLang.setSelection(SupportedLanguages.ALL.indexOf(SupportedLanguages.DEFAULT_SOURCE))
-
-        binding.spinnerTargetLang.adapter = newAdapter()
-        binding.spinnerTargetLang.setSelection(SupportedLanguages.ALL.indexOf(SupportedLanguages.DEFAULT_TARGET))
 
         binding.spinnerSourceLang.onItemSelectedListener = languageSelectedListener { option ->
             if (!isApplyingDetectedLang) {
@@ -204,9 +201,13 @@ class MainActivity : AppCompatActivity() {
             }
             pageTranslator.sourceLang = option.code
         }
-        binding.spinnerTargetLang.onItemSelectedListener = languageSelectedListener { option ->
-            pageTranslator.targetLang = option.code
-        }
+
+        // 도착어는 항상 한국어로 고정한다 — 다른 언어로 번역하고 싶은 경우는 거의 없고,
+        // 출발어는 자동 감지가 대부분 알아서 맞춰주므로 도착어 드롭다운까지 화면에
+        // 두는 건 불필요한 UI였다. pageTranslator.targetLang은 생성 시점에 이미
+        // DEFAULT_TARGET으로 설정되어 있으므로 여기서 다시 바꿀 필요는 없다.
+        binding.textTargetLangFixed.text =
+            getString(R.string.arrow_to, SupportedLanguages.DEFAULT_TARGET.displayName)
     }
 
     /**

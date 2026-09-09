@@ -2,6 +2,16 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## UI 단순화
+
+- **도착어 드롭다운 제거**: 출발어는 자동 감지(`<html lang>`)가 대부분 알아서 맞춰주고,
+  도착어는 사실상 항상 한국어 고정으로 쓰여 드롭다운 두 개를 화면에 나란히 두는 게
+  불필요했다. 도착어 `Spinner`(`spinnerTargetLang`)를 제거하고 "→ 한국어" 형태의
+  고정 텍스트(`textTargetLangFixed`)로 대체했다. `PageTranslator.targetLang`은
+  기존처럼 `SupportedLanguages.DEFAULT_TARGET`으로 고정 초기화되며 사용자가 바꿀
+  방법은 없다 — 다른 언어로 번역하고 싶으면 `SupportedLanguages.DEFAULT_TARGET`을
+  코드에서 바꿔 다시 빌드해야 한다.
+
 ## 저장소 public 전환 대응
 
 - **(v20) 공개 release APK에서 유료/민감 키 제거**: 여러 명에게 테스트를 부탁하기

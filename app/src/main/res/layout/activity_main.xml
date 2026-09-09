@@ -18,19 +18,16 @@
             android:layout_height="wrap_content"
             android:layout_weight="1" />
 
+        <!-- 도착어는 항상 SupportedLanguages.DEFAULT_TARGET(한국어)로 고정되어
+             선택할 필요가 없으므로, 드롭다운 대신 고정 텍스트로만 보여준다.
+             텍스트는 MainActivity가 "→ 한국어" 형태로 채운다. -->
         <TextView
+            android:id="@+id/textTargetLangFixed"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:paddingStart="4dp"
-            android:paddingEnd="4dp"
-            android:text="@string/arrow_to" />
-
-        <Spinner
-            android:id="@+id/spinnerTargetLang"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:paddingEnd="4dp" />
 
         <Button
             android:id="@+id/btnHistory"
