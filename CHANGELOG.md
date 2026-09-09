@@ -43,8 +43,8 @@
   추가했다. 하지만 배포 직후 **번역 자체가 전혀 동작하지 않는 심각한 회귀**가
   보고되었다 — WebView/기기 조합에서 `networkSecurityConfig`가 예상과 다르게
   네트워크 요청 전반을 방해한 것으로 추정된다(정확한 원인은 아직 미확정).
-  v22에서 `AndroidManifest.xml`의 `android:networkSecurityConfig` 속성 연결만
-  즉시 되돌렸다(`network_security_config.xml` 파일 자체는 참고용으로 남겨둠).
+  v22에서 `AndroidManifest.xml`의 `android:networkSecurityConfig` 속성 연결을
+  되돌리고, 미사용 상태가 된 `network_security_config.xml` 파일도 삭제했다.
   **주의**: 이 설정을 다시 시도하려면 실기기에서 WebView 번역이 정상 동작하는지
   반드시 먼저 검증해야 한다.
 
