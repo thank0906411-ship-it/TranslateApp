@@ -2,6 +2,21 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## 저장소 public 전환 대응
+
+- **공개 release APK에서 유료/민감 키 제거**: 여러 명에게 테스트를 부탁하기 위해
+  저장소를 private에서 public으로 전환했는데, `release.yml`이 `GOOGLE_TRANSLATE_API_KEY`
+  (과금되는 Cloud Translation 키)와 `UPDATE_CHECK_PAT`를 그대로 release APK에 주입하고
+  있어서 누구나 다운로드해 디컴파일하면 두 키가 그대로 노출되는 문제가 있었다.
+  결제 자체는 막아뒀어도 무료 할당량 소진이나 키 정지 위험은 남으므로,
+  `release.yml`에서 두 Secrets 주입을 제거해 공개 APK는 항상 ML Kit 온디바이스
+  번역만으로 빌드되도록 했다. 이에 맞춰 `AppUpdateChecker`가 PAT가 비어 있으면
+  `Authorization` 헤더 자체를 생략하도록 수정했다 — 빈 문자열로 `Bearer `를 그대로
+  보내면 GitHub API가 401을 반환하므로, 헤더를 아예 안 붙이는 것과는 다르게
+  동작해야 한다(public repo는 인증 없이도 Releases API 호출이 가능하므로 헤더
+  생략이 안전하게 동작함). Claude/GPT LLM 후처리 키는 애초에 `release.yml`에
+  주입된 적이 없어 이번 문제와 무관했다.
+
 ## 다크모드 표시 문제
 
 - **언어 선택 드롭다운 글자가 안 보이던 문제**: 출발어/도착어 `Spinner`가

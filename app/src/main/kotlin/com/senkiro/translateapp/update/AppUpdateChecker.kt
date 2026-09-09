@@ -23,10 +23,11 @@ import java.io.IOException
  * GitHub Releases API로 최신 릴리스를 확인하고, 새 버전이면 APK를 다운로드해
  * 시스템 설치 화면을 띄운다. 별도 서버 없이 GitHub Releases만으로 동작한다.
  *
- * 이 repo는 private이므로 모든 요청에 읽기 전용 PAT(BuildConfig.GITHUB_UPDATE_PAT,
- * local.properties의 UPDATE_CHECK_PAT에서 주입됨)로 인증한다. asset 다운로드는
- * browser_download_url이 아니라 API의 asset URL을 Accept: application/octet-stream으로
- * 호출해야 private repo에서도 받아진다.
+ * 이 repo는 public이므로 인증 없이도 Releases API 호출과 asset 다운로드가 된다.
+ * BuildConfig.GITHUB_UPDATE_PAT는 과거 private repo였을 때의 잔재로, 로컬
+ * 빌드에서 본인이 이 값을 채워 넣으면(예: private으로 되돌린 경우) 계속 인증
+ * 헤더를 붙여 쓸 수 있도록 남겨뒀다 — 공개 CI 빌드에는 주입되지 않으므로
+ * (release.yml 참고) 공개 배포되는 APK에는 이 토큰이 담기지 않는다.
  *
  * 요구사항:
  *  - GitHub Release의 태그 이름(tag_name)이 버전 코드 숫자를 포함해야 한다. (예: "v3" 또는 "3")
@@ -45,17 +46,20 @@ class AppUpdateChecker(private val context: Context) {
         private const val API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
     }
 
-    private fun authHeader() = "Bearer ${BuildConfig.GITHUB_UPDATE_PAT}"
+    // PAT가 비어 있으면(공개 CI 빌드) null을 반환해 Authorization 헤더 자체를 생략한다.
+    // 빈 문자열로 "Bearer "를 그대로 보내면 GitHub API가 이를 유효하지 않은 인증
+    // 시도로 보고 401을 던지므로, 헤더를 아예 안 붙이는 것과 다르게 동작한다.
+    private fun authHeaderOrNull(): String? =
+        BuildConfig.GITHUB_UPDATE_PAT.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
 
     @Throws(IOException::class)
     fun fetchLatestRelease(): UpdateInfo {
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(API_URL)
             .header("Accept", "application/vnd.github+json")
-            .header("Authorization", authHeader())
-            .build()
+        authHeaderOrNull()?.let { requestBuilder.header("Authorization", it) }
 
-        client.newCall(request).execute().use { response ->
+        client.newCall(requestBuilder.build()).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("HTTP ${response.code}: 릴리스 정보를 가져오지 못했습니다.")
             }
@@ -117,8 +121,8 @@ class AppUpdateChecker(private val context: Context) {
             .setTitle("TranslateApp 업데이트")
             .setDestinationUri(Uri.fromFile(destFile))
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .addRequestHeader("Authorization", authHeader())
             .addRequestHeader("Accept", "application/octet-stream")
+        authHeaderOrNull()?.let { request.addRequestHeader("Authorization", it) }
 
         val downloadId = downloadManager.enqueue(request)
 

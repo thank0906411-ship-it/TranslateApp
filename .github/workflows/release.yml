@@ -34,11 +34,15 @@ jobs:
           echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
           echo "RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
-      - name: Write local.properties with API keys
-        run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "GOOGLE_TRANSLATE_API_KEY=${{ secrets.GOOGLE_TRANSLATE_API_KEY }}" >> local.properties
-          echo "UPDATE_CHECK_PAT=${{ secrets.UPDATE_CHECK_PAT }}" >> local.properties
+      - name: Write local.properties
+        # 이 저장소는 public이라 여기서 만든 release APK를 누구나 다운로드해 디컴파일할
+        # 수 있다. GOOGLE_TRANSLATE_API_KEY(과금되는 Cloud Translation 키)와
+        # UPDATE_CHECK_PAT를 여기 넣으면 APK 안에 평문으로 박혀 유출되므로, 공개 빌드에는
+        # 절대 주입하지 않는다. 키가 없으면 FallbackTranslator가 자동으로 ML Kit
+        # 온디바이스 번역으로 동작하고, public repo는 인증 없이도 Releases API를 호출할
+        # 수 있어 업데이트 확인 기능도 PAT 없이 정상 동작한다. 고품질 번역이 필요하면
+        # 로컬 local.properties에 본인 키를 넣어 직접 빌드해서 쓴다.
+        run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
       - name: Verify tag matches versionCode
         run: |
