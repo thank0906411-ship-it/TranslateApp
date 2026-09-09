@@ -17,6 +17,18 @@
   생략이 안전하게 동작함). Claude/GPT LLM 후처리 키는 애초에 `release.yml`에
   주입된 적이 없어 이번 문제와 무관했다.
 
+## 네트워크 보안
+
+- **전역 cleartext(평문 HTTP) 허용 범위 축소**: `AndroidManifest.xml`이
+  `usesCleartextTraffic="true"`로 모든 도메인에 대해 평문 HTTP를 허용하고
+  있었다. WebView로 사용자가 입력한 임의의 사이트(구식 HTTP 사이트 포함)를
+  열어야 하니 완전히 막을 수는 없지만, 앱 자체가 통신하는 API 도메인
+  (`api.github.com`, `translation.googleapis.com`, `api.anthropic.com`,
+  `api.openai.com`)까지 이 예외에 함께 포함되어 있어 다운그레이드 공격
+  표면이 불필요하게 넓었다. `network_security_config.xml`을 추가해 이
+  API 도메인들만 `cleartextTrafficPermitted="false"`로 명시적으로
+  차단하고, 그 외(WebView가 여는 임의 사이트)는 기존처럼 허용되도록 했다.
+
 ## 다크모드 표시 문제
 
 - **언어 선택 드롭다운 글자가 안 보이던 문제**: 출발어/도착어 `Spinner`가

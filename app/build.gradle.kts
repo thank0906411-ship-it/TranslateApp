@@ -11,10 +11,14 @@ android {
     compileSdk = 34
 
     // local.properties에 GOOGLE_TRANSLATE_API_KEY / UPDATE_CHECK_PAT를 넣으면 로컬 빌드에
-    // 반영된다. CI(GitHub Actions)에서는 release.yml이 이 파일을 Secrets로 직접 생성한다.
+    // 반영된다. 이 repo는 public이라 release.yml(CI)은 두 값을 절대 주입하지 않는다 —
+    // 누구나 다운로드해 디컴파일할 수 있는 공개 APK에 키를 넣으면 그대로 유출되기
+    // 때문이다(자세한 내용은 release.yml, README.md 참고). 로컬에서 직접 빌드해 이
+    // 키들을 채운 APK를 만들었다면, 그 APK 자체는 절대 다른 사람과 공유하지 않는다
+    // (BuildConfig에 평문으로 박히므로 공유 즉시 키가 유출된다).
     // GOOGLE_TRANSLATE_API_KEY가 없으면 앱은 자동으로 ML Kit 온디바이스 번역으로
-    // 폴백한다 (GoogleTranslateEngine 참고). 이 repo는 private이므로 UPDATE_CHECK_PAT는
-    // 필수다 (없으면 업데이트 확인 API 호출이 401로 실패한다).
+    // 폴백하고(GoogleTranslateEngine 참고), UPDATE_CHECK_PAT가 없으면 업데이트 확인
+    // API 호출 시 인증 헤더 없이 요청한다(public repo는 인증 없이도 호출 가능).
     val localProps = Properties().apply {
         val file = rootProject.file("local.properties")
         if (file.exists()) file.inputStream().use { load(it) }
@@ -30,8 +34,8 @@ android {
         applicationId = "com.senkiro.translateapp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 20
-        versionName = "20.0"
+        versionCode = 21
+        versionName = "21.0"
         buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"$googleTranslateApiKey\"")
         buildConfigField("String", "GITHUB_UPDATE_PAT", "\"$githubUpdatePat\"")
         buildConfigField("String", "ANTHROPIC_API_KEY", "\"$anthropicApiKey\"")
