@@ -2,6 +2,18 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## 배포 (테스트 버전 pre-release 자동화)
+
+- **베타 태그(`vNN-beta1` 등)는 자동으로 Pre-release로 표시**: `release.yml`에 태그
+  이름에 하이픈이 있는지 검사하는 스텝을 추가해, `softprops/action-gh-release`의
+  `prerelease` 옵션을 자동으로 켜도록 했다. GitHub의 `/releases/latest` API는
+  pre-release를 자동으로 제외하므로(`AppUpdateChecker`가 바로 이 엔드포인트를
+  호출한다), 베타 태그로 배포한 릴리스는 일반 사용자의 앱에서는 전혀 감지되지
+  않고 개발자가 GitHub 웹의 Releases 페이지에서 직접 다운로드해야만 확인할 수
+  있다. 예: 정식 배포는 `v35`, 테스트 배포는 `v35-beta1`(둘 다 versionCode=35로
+  매칭됨 — "Verify tag matches versionCode" 스텝이 하이픈 앞부분만 잘라 비교하도록
+  함께 수정했다).
+
 ## UI 단순화 (설정 메뉴 통합)
 
 - **용어집/LLM 설정을 하나의 "설정" 메뉴로 통합**: 상단 아이콘 버튼이 4개(기록/

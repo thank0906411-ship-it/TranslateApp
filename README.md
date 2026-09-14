@@ -258,6 +258,25 @@ git push origin v2
 이렇게 올리면 기존 사용자가 앱에서 "업데이트 확인"을 누르는 순간 새 버전을 감지하고
 다운로드/설치를 제안한다.
 
+### 테스트 버전 배포 (개발자만 확인 가능, Pre-release)
+
+이 저장소는 public이라 누구나 태그/Release를 볼 수 있지만, 정식 배포 전 본인이나
+소수 테스터에게만 먼저 확인시키고 싶을 때는 태그 이름에 하이픈(`-`)을 붙여 push한다.
+
+```bash
+git tag v3-beta1   # versionCode 3을 정식 배포하기 전 테스트용
+git push origin v3-beta1
+```
+
+`release.yml`이 태그에 하이픈이 있으면 자동으로 해당 Release를 **Pre-release**로
+표시한다. GitHub의 `/releases/latest` API(`AppUpdateChecker`가 호출하는 바로 그
+엔드포인트)는 pre-release를 자동으로 제외하고 가장 최근 정식 Release만 반환하므로,
+일반 사용자의 앱은 이 버전을 전혀 감지하지 못한다 — 개발자 본인만 GitHub 저장소의
+Releases 페이지에서 직접 APK를 다운로드해 확인할 수 있다. versionCode 검증은
+태그의 하이픈 앞부분(`v3`)만 보므로 `v3-beta1`, `v3-beta2`처럼 같은 versionCode에
+여러 베타 태그를 붙여도 무방하다. 테스트가 끝나면 같은 versionCode로 하이픈 없는
+정식 태그(`v3`)를 push해 일반 배포한다.
+
 ### 최초 1회 설정 — release keystore를 GitHub Secrets에 등록
 
 서명 키가 버전마다 바뀌면 기존 앱 위에 업데이트 설치가 안 되므로(재설치 필요),

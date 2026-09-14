@@ -52,8 +52,11 @@ jobs:
           echo "GOOGLE_TRANSLATE_API_KEY=${{ secrets.GOOGLE_TRANSLATE_API_KEY }}" >> local.properties
 
       - name: Verify tag matches versionCode
+        # 태그에 -beta1 같은 접두사가 붙어도(예: v35-beta1) 하이픈 앞부분(v35)의 숫자만
+        # versionCode와 비교한다. tr로 문자열 전체에서 숫자만 뽑으면 "351"이 되어
+        # versionCode=35와 어긋나 버리므로, 반드시 하이픈 앞부분만 잘라내야 한다.
         run: |
-          TAG_DIGITS=$(echo "${GITHUB_REF_NAME}" | tr -dc '0-9')
+          TAG_DIGITS=$(echo "${GITHUB_REF_NAME}" | cut -d'-' -f1 | tr -dc '0-9')
           VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts)
           if [ "$TAG_DIGITS" != "$VERSION_CODE" ]; then
             echo "::error::태그(${GITHUB_REF_NAME} -> $TAG_DIGITS)와 versionCode($VERSION_CODE)가 일치하지 않습니다. 앱 내 업데이트 확인 로직이 태그의 숫자를 versionCode로 비교하므로 반드시 일치해야 합니다."
@@ -94,8 +97,24 @@ jobs:
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Determine prerelease flag
+        # 태그 이름에 하이픈이 있으면(예: v35-beta1) 테스트 버전으로 간주해 pre-release로
+        # 표시한다. GitHub의 /releases/latest API는 pre-release를 자동으로 제외하므로,
+        # 일반 사용자의 앱(AppUpdateChecker)은 이 릴리스를 감지하지 못하고 개발자가
+        # GitHub 웹의 Releases 페이지에서 직접 다운로드해야만 확인할 수 있다.
+        # versionCode는 태그의 숫자만 추출해 쓰므로(Verify tag matches versionCode 참고)
+        # "v35-beta1"도 versionCode=35로 정상 매칭된다.
+        id: prerelease
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "flag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.apk.outputs.path }}
           body: ${{ steps.notes.outputs.notes }}
+          prerelease: ${{ steps.prerelease.outputs.flag }}
