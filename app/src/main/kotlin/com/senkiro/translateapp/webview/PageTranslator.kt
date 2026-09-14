@@ -224,7 +224,12 @@ class PageTranslator(
                                 cache.put(originalText, sourceLang, targetLang, translated)
                             }
                             idToTranslated[id] = translated
-                            postProcessTargets[id] = originalText to translated
+                            // 자동 감지 모드에서 이미 도착어로 판별된 블록은 원문=번역문
+                            // 그대로다 — LLM 후처리에 보내면 손댈 게 없는데도 "다듬어" 달라고
+                            // 요청하는 셈이라, 엉뚱하게 변형될 위험만 있고 얻는 게 없다.
+                            if (effectiveSourceLang != targetLang) {
+                                postProcessTargets[id] = originalText to translated
+                            }
                         }
                     } else {
                         // 용어집이 적용된 블록은 캐시를 쓰지 않고 항상 새로 번역한다. 플레이스홀더가
