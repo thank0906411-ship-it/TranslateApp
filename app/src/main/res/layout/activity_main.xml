@@ -29,17 +29,20 @@
             android:paddingStart="4dp"
             android:paddingEnd="4dp" />
 
-        <Button
-            android:id="@+id/btnHistory"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/btn_history"
-            android:textSize="11sp" />
-
         <!-- Widget.MaterialComponents 스타일은 Button 전용(minWidth 등 텍스트 버튼에
              맞춘 속성)이라 ImageButton에는 적합하지 않아 스타일 없이 배경만
-             selectableItemBackgroundBorderless로 지정한다(원 모양 리플, 사각 테두리 없음). -->
+             selectableItemBackgroundBorderless로 지정한다(원 모양 리플, 사각 테두리 없음).
+             아래 아이콘 버튼들 모두 같은 이유로 스타일을 생략한다. -->
+        <ImageButton
+            android:id="@+id/btnHistory"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/btn_history"
+            android:padding="8dp"
+            android:src="@android:drawable/ic_menu_recent_history"
+            android:tint="?android:attr/textColorPrimary" />
+
         <ImageButton
             android:id="@+id/btnCheckUpdate"
             android:layout_width="wrap_content"
@@ -75,23 +78,27 @@
             android:layout_marginStart="8dp"
             android:text="@string/btn_translate" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnGlossary"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
-            android:text="@string/btn_glossary"
-            android:textSize="11sp" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/btn_glossary"
+            android:padding="8dp"
+            android:src="@android:drawable/ic_menu_sort_alphabetically"
+            android:tint="?android:attr/textColorPrimary" />
 
-        <Button
+        <ImageButton
             android:id="@+id/btnLlmSettings"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
-            android:text="@string/btn_llm_settings"
-            android:textSize="11sp" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/btn_llm_settings"
+            android:padding="8dp"
+            android:src="@android:drawable/ic_menu_manage"
+            android:tint="?android:attr/textColorPrimary" />
 
     </LinearLayout>
 

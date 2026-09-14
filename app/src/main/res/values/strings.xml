@@ -25,7 +25,7 @@
     <string name="btn_history">기록</string>
     <string name="history_dialog_title">최근 방문 / 즐겨찾기</string>
     <string name="translation_failed_notice">일부 문장이 번역되지 않았을 수 있습니다.</string>
-    <string name="btn_llm_settings">LLM</string>
+    <string name="btn_llm_settings">LLM 설정</string>
     <string name="llm_settings_title">LLM 문맥 후처리 설정</string>
     <string name="llm_settings_description">API 키를 입력하면 번역 결과를 페이지 문맥과 함께 더 자연스럽게 다듬어줍니다. 키가 없어도 앱은 정상 동작하며, Claude 키가 있으면 Claude를 우선 사용합니다. 키는 이 기기에만 저장되며 다른 곳으로 전송되지 않습니다.</string>
     <string name="llm_settings_claude_label">Claude API 키 (Anthropic)</string>

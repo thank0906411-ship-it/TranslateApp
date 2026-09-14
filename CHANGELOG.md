@@ -11,6 +11,12 @@
   텍스트 버튼 전용이라 `ImageButton`에는 적용하지 않고, 배경만
   `selectableItemBackgroundBorderless`(원형 리플, 사각 테두리 없음)로 지정했다.
   스크린 리더 사용자를 위해 `contentDescription`은 유지한다.
+- **"기록"/"용어집"/"LLM 설정" 텍스트 버튼도 아이콘으로 교체**: 위와 같은 이유로
+  나머지 텍스트 버튼 세 개도 아이콘 버튼으로 바꿔 상단 바 전체가 훨씬 덜
+  붐비게 됐다. 기록은 시계/기록 아이콘(`ic_menu_recent_history`), 용어집은
+  정렬 아이콘(`ic_menu_sort_alphabetically`), LLM 설정은 관리 아이콘
+  (`ic_menu_manage`)을 쓴다. "기록" 버튼의 롱클릭(사용량 표시) 기능은 그대로
+  유지된다 — `View`의 클릭 리스너는 버튼 종류와 무관하게 동작한다.
 
 ## 코드 정리
 
