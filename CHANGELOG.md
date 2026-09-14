@@ -2,6 +2,16 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## UI 개선
+
+- **"업데이트" 텍스트 버튼을 아이콘 버튼으로 교체**: 좁은 화면에서 상단 버튼들이
+  출발어 스피너 공간을 압박하는 문제를 계속 텍스트만 줄여서 완화해왔는데, 아예
+  텍스트 없는 아이콘(`ImageButton` + 새로고침 아이콘, `android.R.drawable.ic_menu_rotate`)
+  으로 바꿔 차지하는 폭을 더 줄였다. `Widget.MaterialComponents` 버튼 스타일은
+  텍스트 버튼 전용이라 `ImageButton`에는 적용하지 않고, 배경만
+  `selectableItemBackgroundBorderless`(원형 리플, 사각 테두리 없음)로 지정했다.
+  스크린 리더 사용자를 위해 `contentDescription`은 유지한다.
+
 ## 코드 정리
 
 - **다이얼로그 공통 보일러플레이트를 BaseDialog/BindingListAdapter로 추출**:

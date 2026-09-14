@@ -37,13 +37,18 @@
             android:text="@string/btn_history"
             android:textSize="11sp" />
 
-        <Button
+        <!-- Widget.MaterialComponents 스타일은 Button 전용(minWidth 등 텍스트 버튼에
+             맞춘 속성)이라 ImageButton에는 적합하지 않아 스타일 없이 배경만
+             selectableItemBackgroundBorderless로 지정한다(원 모양 리플, 사각 테두리 없음). -->
+        <ImageButton
             android:id="@+id/btnCheckUpdate"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/btn_check_update"
-            android:textSize="11sp" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/btn_check_update"
+            android:padding="8dp"
+            android:src="@android:drawable/ic_menu_rotate"
+            android:tint="?android:attr/textColorPrimary" />
 
     </LinearLayout>
 
