@@ -2,22 +2,35 @@ package com.senkiro.translateapp.ui
 
 import android.app.Activity
 import android.view.LayoutInflater
+import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.LifecycleCoroutineScope
 import com.senkiro.translateapp.R
 import com.senkiro.translateapp.databinding.DialogLlmSettingsBinding
 import com.senkiro.translateapp.settings.ApiKeyStore
+import com.senkiro.translateapp.translation.ClaudePostProcessor
+import com.senkiro.translateapp.translation.GptPostProcessor
 import com.senkiro.translateapp.utils.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 사용자가 Claude/GPT API 키를 직접 입력해 LLM 문맥 후처리를 켤 수 있는 설정 다이얼로그.
  * 공개 release APK는 이 키들을 빌드에 주입하지 않으므로(release.yml 참고), 여기서
  * 입력하는 것이 유일한 활성화 경로다. 저장은 즉시 반영되며(DelegatingLlmPostProcessor가
  * 매 번역마다 다시 확인), 앱 재시작이 필요 없다.
+ *
+ * 저장 버튼을 누르면 입력된 키로 최소 비용 테스트 호출을 보내 실제로 유효한지
+ * 확인한 뒤에 저장한다 — 오타나 잘못된 키를 그냥 저장해두면, 나중에 번역할 때
+ * 조용히 1차 번역으로 폴백되어 사용자가 원인을 알 방법이 없기 때문이다.
  */
 class LlmSettingsDialog(
     private val activity: Activity,
-    private val apiKeyStore: ApiKeyStore
+    private val apiKeyStore: ApiKeyStore,
+    private val scope: LifecycleCoroutineScope
 ) {
     fun show() {
         if (activity.isFinishing || activity.isDestroyed) {
@@ -32,18 +45,88 @@ class LlmSettingsDialog(
         val dialog = AlertDialog.Builder(activity)
             .setTitle(R.string.llm_settings_title)
             .setView(binding.root)
-            .setPositiveButton(R.string.llm_settings_save) { _, _ ->
-                apiKeyStore.anthropicApiKey = binding.editAnthropicKey.text.toString()
-                apiKeyStore.openAiApiKey = binding.editOpenAiKey.text.toString()
-                Toast.makeText(activity, R.string.llm_settings_saved, Toast.LENGTH_SHORT).show()
-            }
+            // 검증이 끝날 때까지 다이얼로그를 열어둬야 하므로, 여기서는 리스너를 걸지 않고
+            // 아래 setOnShowListener에서 버튼 클릭을 직접 가로챈다(기본 동작은 클릭 시
+            // 바로 dismiss되어 비동기 검증 결과를 기다릴 수 없다).
+            .setPositiveButton(R.string.llm_settings_save, null)
             .setNegativeButton(R.string.glossary_btn_close, null)
             .create()
+
+        dialog.setOnShowListener {
+            val saveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            saveButton.setOnClickListener {
+                val anthropicKey = binding.editAnthropicKey.text.toString().trim()
+                val openAiKey = binding.editOpenAiKey.text.toString().trim()
+                validateAndSave(dialog, saveButton, anthropicKey, openAiKey)
+            }
+        }
 
         try {
             dialog.show()
         } catch (e: Exception) {
             Logger.e("LLM 설정 다이얼로그 표시 실패", e)
+        }
+    }
+
+    private fun validateAndSave(
+        dialog: AlertDialog,
+        saveButton: Button,
+        anthropicKey: String,
+        openAiKey: String
+    ) {
+        saveButton.isEnabled = false
+        saveButton.setText(R.string.llm_settings_validating)
+
+        scope.launch {
+            // true: 저장하고 다이얼로그를 닫는다. false: 버튼을 다시 활성화하고 재시도를 기다린다.
+            val shouldCloseDialog = try {
+                val anthropicOk = withContext(Dispatchers.IO) {
+                    anthropicKey.isBlank() || ClaudePostProcessor().validateApiKey(anthropicKey)
+                }
+                val openAiOk = withContext(Dispatchers.IO) {
+                    openAiKey.isBlank() || GptPostProcessor().validateApiKey(openAiKey)
+                }
+
+                when {
+                    !anthropicOk && !openAiOk -> {
+                        Toast.makeText(activity, R.string.llm_settings_both_invalid, Toast.LENGTH_LONG).show()
+                        false
+                    }
+                    !anthropicOk -> {
+                        Toast.makeText(activity, R.string.llm_settings_claude_invalid, Toast.LENGTH_LONG).show()
+                        false
+                    }
+                    !openAiOk -> {
+                        Toast.makeText(activity, R.string.llm_settings_gpt_invalid, Toast.LENGTH_LONG).show()
+                        false
+                    }
+                    else -> {
+                        apiKeyStore.anthropicApiKey = anthropicKey
+                        apiKeyStore.openAiApiKey = openAiKey
+                        Toast.makeText(activity, R.string.llm_settings_saved, Toast.LENGTH_SHORT).show()
+                        true
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 401/403(키 자체가 무효)은 위에서 이미 별도로 처리했으므로, 여기 도달하는
+                // 예외는 네트워크 단절/타임아웃/서버 오류 등 키와 무관한 원인일 가능성이
+                // 높다. 검증에 실패했다고 저장 자체를 막으면, 오프라인 상태에서는 정상
+                // 키조차 등록할 수 없게 되어 더 불편하다 — 경고만 하고 그대로 저장한다.
+                Logger.e("API 키 검증 실패(네트워크 오류로 추정), 확인 없이 저장 진행", e)
+                Toast.makeText(activity, R.string.llm_settings_validation_error, Toast.LENGTH_LONG).show()
+                apiKeyStore.anthropicApiKey = anthropicKey
+                apiKeyStore.openAiApiKey = openAiKey
+                true
+            }
+
+            if (shouldCloseDialog) {
+                dialog.dismiss()
+            } else {
+                saveButton.isEnabled = true
+                saveButton.setText(R.string.llm_settings_save)
+            }
         }
     }
 }

@@ -290,7 +290,7 @@ class MainActivity : AppCompatActivity() {
      * 주입하지 않으므로, 여기서 입력하는 것이 LLM 문맥 후처리를 켤 수 있는 유일한 방법이다.
      */
     private fun showLlmSettingsDialog() {
-        LlmSettingsDialog(activity = this, apiKeyStore = apiKeyStore).show()
+        LlmSettingsDialog(activity = this, apiKeyStore = apiKeyStore, scope = lifecycleScope).show()
     }
 
     private fun loadFromInput() {

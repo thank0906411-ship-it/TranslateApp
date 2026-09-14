@@ -34,6 +34,41 @@ class ClaudePostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPos
 
     override val isConfigured: Boolean get() = apiKey.isNotBlank()
 
+    /**
+     * 설정 화면에서 "저장" 시점에 키가 실제로 유효한지 확인하기 위한 최소 비용 호출.
+     * 번역 문맥과 무관한 아주 짧은 메시지만 보내 토큰 소비를 최소화한다(그래도 소액
+     * 과금은 발생함). 401/403처럼 키 자체가 문제인 경우만 명확히 false로 판단하고,
+     * 그 외 오류(네트워크 단절, 일시적 서버 오류 등)는 "키 문제인지 확신할 수 없음"으로
+     * 보고 예외를 그대로 던져 호출부가 구분해서 안내할 수 있게 한다.
+     */
+    suspend fun validateApiKey(key: String): Boolean {
+        if (key.isBlank()) return false
+
+        val requestJson = JSONObject().apply {
+            put("model", "claude-opus-5")
+            put("max_tokens", 1)
+            put(
+                "messages",
+                JSONArray().put(JSONObject().apply { put("role", "user"); put("content", "hi") })
+            )
+        }
+        val body = requestJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", key)
+            .header("anthropic-version", "2023-06-01")
+            .post(body)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (response.code == 401 || response.code == 403) return false
+            if (!response.isSuccessful) {
+                throw IOException("Claude API 오류 (HTTP ${response.code})")
+            }
+            return true
+        }
+    }
+
     override suspend fun refine(
         originalBlocks: List<String>,
         translatedBlocks: List<String>,

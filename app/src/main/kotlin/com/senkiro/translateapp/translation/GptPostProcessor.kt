@@ -32,6 +32,37 @@ class GptPostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPostPr
 
     override val isConfigured: Boolean get() = apiKey.isNotBlank()
 
+    /**
+     * 설정 화면에서 "저장" 시점에 키가 실제로 유효한지 확인하기 위한 최소 비용 호출.
+     * ClaudePostProcessor.validateApiKey와 같은 이유/설계.
+     */
+    suspend fun validateApiKey(key: String): Boolean {
+        if (key.isBlank()) return false
+
+        val requestJson = JSONObject().apply {
+            put("model", "gpt-5")
+            put("max_tokens", 1)
+            put(
+                "messages",
+                JSONArray().put(JSONObject().apply { put("role", "user"); put("content", "hi") })
+            )
+        }
+        val body = requestJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", "Bearer $key")
+            .post(body)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (response.code == 401 || response.code == 403) return false
+            if (!response.isSuccessful) {
+                throw IOException("OpenAI API 오류 (HTTP ${response.code})")
+            }
+            return true
+        }
+    }
+
     override suspend fun refine(
         originalBlocks: List<String>,
         translatedBlocks: List<String>,
