@@ -73,7 +73,8 @@ class ClaudePostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPos
         originalBlocks: List<String>,
         translatedBlocks: List<String>,
         targetLang: String,
-        contextBlocks: List<String>
+        contextBlocks: List<String>,
+        onTokenUsage: (Int) -> Unit
     ): List<String> {
         if (!isConfigured) throw IOException("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
         if (originalBlocks.isEmpty()) return translatedBlocks
@@ -139,6 +140,15 @@ class ClaudePostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPos
             val json = JSONObject(responseBody)
             if (json.optString("stop_reason") == "refusal") {
                 throw IOException("Claude가 이 콘텐츠의 후처리를 거부했습니다.")
+            }
+
+            // usage.input_tokens/output_tokens는 실제 과금 기준 토큰 수다. 응답 형식이
+            // 바뀌어 필드가 없어도(구버전 API 등) 있는 값만 최선으로 사용하고,
+            // 완전히 파싱에 실패하면 조용히 건너뛴다 — 호출부가 글자 수 근사치로 폴백한다.
+            json.optJSONObject("usage")?.let { usage ->
+                val inputTokens = usage.optInt("input_tokens", 0)
+                val outputTokens = usage.optInt("output_tokens", 0)
+                if (inputTokens + outputTokens > 0) onTokenUsage(inputTokens + outputTokens)
             }
 
             val textBlock = json.getJSONArray("content")

@@ -20,6 +20,9 @@ interface LlmPostProcessor {
      *   번역해달라는 게 아니라, 문맥(용어 일관성, 어투)을 참고하라고만 곁들이는 참고
      *   자료다. 비용을 아끼려고 이 블록들 자체는 API 호출 대상에서 제외하되, 페이지
      *   전체 맥락을 어느 정도 보게 해 품질을 높인다. 없으면 빈 리스트.
+     * @param onTokenUsage API 응답의 usage 필드에서 얻은 실제 토큰 수(입력+출력 합계)를
+     *   알려준다. 구현체가 usage 파싱에 실패하거나 필드가 없으면 호출하지 않아도 된다 —
+     *   호출부(PageTranslator)는 이 콜백이 안 오면 글자 수 근사치로 폴백한다.
      * @return 다듬어진 번역 블록 목록. originalBlocks/translatedBlocks와 반드시 같은 개수와
      *   순서를 유지해야 한다 — 호출부(PageTranslator)가 인덱스로 원래 블록 id에 매핑한다.
      *   contextBlocks에 대한 결과는 포함하지 않는다(애초에 다시 요청하지 않으므로).
@@ -28,7 +31,8 @@ interface LlmPostProcessor {
         originalBlocks: List<String>,
         translatedBlocks: List<String>,
         targetLang: String,
-        contextBlocks: List<String> = emptyList()
+        contextBlocks: List<String> = emptyList(),
+        onTokenUsage: (Int) -> Unit = {}
     ): List<String>
 }
 
@@ -55,10 +59,11 @@ class DelegatingLlmPostProcessor(
         originalBlocks: List<String>,
         translatedBlocks: List<String>,
         targetLang: String,
-        contextBlocks: List<String>
+        contextBlocks: List<String>,
+        onTokenUsage: (Int) -> Unit
     ): List<String> {
         val active = activeOrNull() ?: return translatedBlocks
-        return active.refine(originalBlocks, translatedBlocks, targetLang, contextBlocks)
+        return active.refine(originalBlocks, translatedBlocks, targetLang, contextBlocks, onTokenUsage)
     }
 }
 

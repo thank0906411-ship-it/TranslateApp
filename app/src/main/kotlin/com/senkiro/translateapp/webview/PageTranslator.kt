@@ -165,13 +165,20 @@ class PageTranslator(
                             .filter { it !in postProcessTargets }
                             .map { idToTranslated.getValue(it) }
                             .take(MAX_CONTEXT_BLOCKS)
-                        val refined = llmPostProcessor.refine(originals, translated, targetLang, contextBlocks)
+                        // 후처리기가 API 응답의 usage 필드에서 실제 토큰 수를 파싱해 알려주면
+                        // 그 값을 그대로 쓴다. 콜백이 안 오면(구현체가 usage 파싱에 실패했거나
+                        // 필드가 없는 구버전 응답) 프롬프트+응답 글자 수 합계로 근사한다.
+                        var actualTokens = 0
+                        val refined = llmPostProcessor.refine(originals, translated, targetLang, contextBlocks) {
+                            actualTokens = it
+                        }
                         ids.forEachIndexed { index, id -> idToTranslated[id] = refined[index] }
-                        // 실제 토큰 수는 API 응답의 usage 필드를 파싱해야 정확히 알 수 있는데,
-                        // 지금은 후처리기가 그 값을 반환하지 않으므로 프롬프트+응답 글자 수
-                        // 합계로 근사한다(대략적인 참고용 수치일 뿐 정확한 토큰 수는 아님).
-                        val charCount = (originals + translated + refined + contextBlocks).sumOf { it.length }
-                        usageTracker?.addLlmChars(charCount)
+                        val usageCount = if (actualTokens > 0) {
+                            actualTokens
+                        } else {
+                            (originals + translated + refined + contextBlocks).sumOf { it.length }
+                        }
+                        usageTracker?.addLlmUsage(usageCount)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

@@ -34,7 +34,7 @@ class UsageTracker(context: Context) {
             prefs.edit()
                 .putString(KEY_MONTH, thisMonth)
                 .putLong(KEY_CLOUD_TRANSLATE_CHARS, 0L)
-                .putLong(KEY_LLM_CHARS, 0L)
+                .putLong(KEY_LLM_USAGE, 0L)
                 .apply()
         }
     }
@@ -49,38 +49,40 @@ class UsageTracker(context: Context) {
     }
 
     /**
-     * LLM 후처리 사용량은 실제 토큰 수를 API 응답에서 받아오지 않으므로(구조화된
-     * 출력의 usage 필드까지 파싱하려면 각 후처리기 수정이 더 필요해 우선 생략),
-     * 프롬프트/응답에 들어간 글자 수를 대신 기록한다 — 실제 토큰 수의 근사치일 뿐이다.
+     * LLM 후처리 사용량은 가능하면 API 응답의 usage 필드에서 얻은 실제 토큰 수를,
+     * 그 값을 못 받았으면(구현체가 usage 파싱에 실패했거나 필드가 없는 응답) 프롬프트/
+     * 응답 글자 수 합계를 대신 기록한다 — 호출부(PageTranslator)가 어느 쪽인지 이미
+     * 판단해서 넘겨주므로 여기서는 구분하지 않고 그대로 누적한다. 두 단위가 섞여
+     * 있으므로 [formatSnapshot]은 "토큰/글자 추정"이라고 표시해 오해를 줄인다.
      */
-    fun addLlmChars(count: Int) {
+    fun addLlmUsage(count: Int) {
         if (count <= 0) return
         synchronized(lock) {
             resetIfNewMonth()
-            val current = prefs.getLong(KEY_LLM_CHARS, 0L)
-            prefs.edit().putLong(KEY_LLM_CHARS, current + count).apply()
+            val current = prefs.getLong(KEY_LLM_USAGE, 0L)
+            prefs.edit().putLong(KEY_LLM_USAGE, current + count).apply()
         }
     }
 
-    data class UsageSnapshot(val cloudTranslateChars: Long, val llmChars: Long)
+    data class UsageSnapshot(val cloudTranslateChars: Long, val llmUsage: Long)
 
     fun getSnapshot(): UsageSnapshot = synchronized(lock) {
         resetIfNewMonth()
         UsageSnapshot(
             cloudTranslateChars = prefs.getLong(KEY_CLOUD_TRANSLATE_CHARS, 0L),
-            llmChars = prefs.getLong(KEY_LLM_CHARS, 0L)
+            llmUsage = prefs.getLong(KEY_LLM_USAGE, 0L)
         )
     }
 
     fun formatSnapshot(snapshot: UsageSnapshot): String {
         val nf = NumberFormat.getNumberInstance(Locale.getDefault())
         return "Cloud Translation: ${nf.format(snapshot.cloudTranslateChars)}자 / " +
-            "LLM 후처리(추정): ${nf.format(snapshot.llmChars)}자"
+            "LLM 후처리(토큰/글자 추정): ${nf.format(snapshot.llmUsage)}"
     }
 
     companion object {
         private const val KEY_MONTH = "month"
         private const val KEY_CLOUD_TRANSLATE_CHARS = "cloud_translate_chars"
-        private const val KEY_LLM_CHARS = "llm_chars"
+        private const val KEY_LLM_USAGE = "llm_chars"
     }
 }

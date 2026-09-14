@@ -67,7 +67,8 @@ class GptPostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPostPr
         originalBlocks: List<String>,
         translatedBlocks: List<String>,
         targetLang: String,
-        contextBlocks: List<String>
+        contextBlocks: List<String>,
+        onTokenUsage: (Int) -> Unit
     ): List<String> {
         if (!isConfigured) throw IOException("OPENAI_API_KEY가 설정되지 않았습니다.")
         if (originalBlocks.isEmpty()) return translatedBlocks
@@ -131,6 +132,15 @@ class GptPostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPostPr
             }
 
             val json = JSONObject(responseBody)
+
+            // usage.prompt_tokens/completion_tokens는 실제 과금 기준 토큰 수다. 필드가
+            // 없거나 파싱에 실패해도 조용히 건너뛴다 — 호출부가 글자 수 근사치로 폴백한다.
+            json.optJSONObject("usage")?.let { usage ->
+                val promptTokens = usage.optInt("prompt_tokens", 0)
+                val completionTokens = usage.optInt("completion_tokens", 0)
+                if (promptTokens + completionTokens > 0) onTokenUsage(promptTokens + completionTokens)
+            }
+
             val messageContent = json.getJSONArray("choices")
                 .getJSONObject(0)
                 .getJSONObject("message")

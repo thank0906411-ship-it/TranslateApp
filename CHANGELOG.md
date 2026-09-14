@@ -2,6 +2,19 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## 정확도 개선
+
+- **LLM 사용량을 실제 토큰 수 기반으로 기록**: 지금까지 `UsageTracker`가 LLM 후처리
+  사용량을 프롬프트+응답 글자 수 합계로만 근사했는데(실제 토큰 수와 오차가 있음),
+  `ClaudePostProcessor`/`GptPostProcessor`가 API 응답의 `usage` 필드
+  (`input_tokens`/`output_tokens`, `prompt_tokens`/`completion_tokens`)에서 실제
+  토큰 수를 파싱해 `LlmPostProcessor.refine`의 새 `onTokenUsage` 콜백으로 알려주도록
+  했다. `PageTranslator`는 이 콜백이 오면 실제 토큰 수를, 안 오면(구현체가 usage
+  파싱에 실패했거나 필드가 없는 응답) 기존 글자 수 근사치로 폴백한다. 두 단위가
+  섞여 기록될 수 있어 `UsageTracker.addLlmChars`를 `addLlmUsage`로 이름을 바꾸고
+  표시 문구도 "LLM 후처리(토큰/글자 추정)"으로 정정했다(SharedPreferences 키
+  자체는 `llm_chars`로 그대로 둬서 기존 사용자의 이번 달 누적치는 유지됨).
+
 ## 성능 개선
 
 - **LLM 설정 저장 시 Claude/GPT 키 검증이 불필요하게 느렸던 문제**: `LlmSettingsDialog`가
