@@ -70,11 +70,34 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: gradle assembleRelease --no-daemon
 
+      - name: Determine prerelease flag
+        # 태그 이름에 하이픈이 있으면(예: v35-beta1) 테스트 버전으로 간주해 pre-release로
+        # 표시한다. GitHub의 /releases/latest API는 pre-release를 자동으로 제외하므로,
+        # 일반 사용자의 앱(AppUpdateChecker)은 이 릴리스를 감지하지 못하고 개발자가
+        # GitHub 웹의 Releases 페이지에서 직접 다운로드해야만 확인할 수 있다.
+        # versionCode는 태그의 숫자만 추출해 쓰므로(Verify tag matches versionCode 참고)
+        # "v35-beta1"도 versionCode=35로 정상 매칭된다.
+        id: prerelease
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "flag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Locate APK
+        # 베타 태그로 빌드된 APK는 파일명 자체에 "test"를 명시해, 정식 배포 APK
+        # (app-release.apk)와 혼동해 일반 사용자에게 잘못 배포하는 실수를 막는다.
         id: apk
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n1)
-          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          SRC_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n1)
+          if [ "${{ steps.prerelease.outputs.flag }}" = "true" ]; then
+            OUT_PATH="$(dirname "$SRC_PATH")/app-test-${GITHUB_REF_NAME}.apk"
+            cp "$SRC_PATH" "$OUT_PATH"
+          else
+            OUT_PATH="$SRC_PATH"
+          fi
+          echo "path=$OUT_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Build release notes from commit messages
         # generate_release_notes(GitHub 자동 생성)는 PR 제목 기반이라, PR 없이 태그만
@@ -96,21 +119,6 @@ jobs:
             git log "$RANGE" --reverse --format='- %s'
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Determine prerelease flag
-        # 태그 이름에 하이픈이 있으면(예: v35-beta1) 테스트 버전으로 간주해 pre-release로
-        # 표시한다. GitHub의 /releases/latest API는 pre-release를 자동으로 제외하므로,
-        # 일반 사용자의 앱(AppUpdateChecker)은 이 릴리스를 감지하지 못하고 개발자가
-        # GitHub 웹의 Releases 페이지에서 직접 다운로드해야만 확인할 수 있다.
-        # versionCode는 태그의 숫자만 추출해 쓰므로(Verify tag matches versionCode 참고)
-        # "v35-beta1"도 versionCode=35로 정상 매칭된다.
-        id: prerelease
-        run: |
-          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
-            echo "flag=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "flag=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

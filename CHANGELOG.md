@@ -13,6 +13,11 @@
   있다. 예: 정식 배포는 `v35`, 테스트 배포는 `v35-beta1`(둘 다 versionCode=35로
   매칭됨 — "Verify tag matches versionCode" 스텝이 하이픈 앞부분만 잘라 비교하도록
   함께 수정했다).
+- **베타 빌드 APK 파일명에 "test" 명시**: `v34-beta1`을 실제로 배포해보니 첨부
+  파일명이 정식 배포와 똑같은 `app-release.apk`라, 다운로드한 파일만 보고는
+  테스트용인지 구분할 수 없었다. "Locate APK" 스텝에서 prerelease일 때만
+  `app-test-<태그>.apk`(예: `app-test-v34-beta1.apk`)로 복사해 첨부하도록
+  수정했다.
 
 ## UI 단순화 (설정 메뉴 통합)
 
