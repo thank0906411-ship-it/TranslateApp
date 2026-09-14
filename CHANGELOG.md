@@ -2,6 +2,18 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## 코드 정리
+
+- **다이얼로그 공통 보일러플레이트를 BaseDialog/BindingListAdapter로 추출**:
+  `GlossaryDialog`/`HistoryDialog`/`LlmSettingsDialog`가 각자 거의 동일한 방어
+  코드(Activity 소멸 체크 후 `show()`, `CancellationException`을 구분하는 코루틴
+  예외 처리, `ArrayAdapter` 서브클래스의 `update`/`getView`)를 중복 작성하고
+  있었다. 세 다이얼로그를 합쳐 116줄이 이렇게 반복되는 코드였다. `BaseDialog`
+  (safeShow/launchSafely)와 `BindingListAdapter`(ViewBinding 기반 제네릭
+  어댑터)로 뽑아내 세 다이얼로그가 이를 상속/사용하도록 리팩터링했다 — 동작
+  변화는 없고, 다음에 사이드 기능을 추가할 때 이 방어 코드를 빠뜨릴 위험을
+  줄이는 게 목적이다.
+
 ## 새 기능
 
 - **앱 안에서 LLM API 키 직접 입력**: 공개 release APK는 Claude/GPT 키를 빌드에

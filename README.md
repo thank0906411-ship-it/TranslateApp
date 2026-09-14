@@ -141,7 +141,12 @@ OPENAI_API_KEY=본인의_OpenAI_API_키
   등록된 용어를 플레이스홀더(`⟦0⟧`)로 바꿨다가 번역 후 고정 번역어로 복원한다.
 - `history` — 최근 방문/즐겨찾기 (Room DB, 즐겨찾기가 아닌 항목은 최대 50개만 유지).
 - `usage` — Cloud Translation/LLM 사용량 카운터 (SharedPreferences, 매달 자동 리셋).
-- `ui` — MainActivity (URL 입력 + WebView + 각종 다이얼로그, 단일 화면).
+- `ui` — MainActivity (URL 입력 + WebView + 각종 다이얼로그, 단일 화면). 용어집/
+  히스토리/LLM 설정처럼 "버튼 하나로 여는 AlertDialog" 형태의 사이드 기능을 새로
+  추가할 때는 `BaseDialog`를 상속한다 — Activity 소멸 상태 체크(`safeShow`)와
+  코루틴 취소 예외 처리(`launchSafely`)를 대신 해주므로 반복 작성할 필요가 없다.
+  리스트가 있는 다이얼로그는 `BindingListAdapter`로 `ArrayAdapter` 서브클래스
+  작성도 생략할 수 있다(예시는 `GlossaryDialog`/`HistoryDialog` 참고).
 - `update` — GitHub Releases 기반 앱 내 업데이트 확인/다운로드/설치.
 
 ### 인라인 번역 파이프라인

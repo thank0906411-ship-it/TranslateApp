@@ -26,18 +26,17 @@ import kotlinx.coroutines.withContext
  * 저장 버튼을 누르면 입력된 키로 최소 비용 테스트 호출을 보내 실제로 유효한지
  * 확인한 뒤에 저장한다 — 오타나 잘못된 키를 그냥 저장해두면, 나중에 번역할 때
  * 조용히 1차 번역으로 폴백되어 사용자가 원인을 알 방법이 없기 때문이다.
+ *
+ * launchSafely를 쓰지 않는 이유: 저장 성공 여부(다이얼로그를 닫을지)를 코루틴 바깥
+ * (버튼 재활성화 로직)까지 반환해야 하는데, BaseDialog.launchSafely는 결과값 없이
+ * 실패를 로그로만 남기는 걸 전제로 설계되어 있어 이 흐름에는 맞지 않는다.
  */
 class LlmSettingsDialog(
-    private val activity: Activity,
+    activity: Activity,
     private val apiKeyStore: ApiKeyStore,
-    private val scope: LifecycleCoroutineScope
-) {
+    scope: LifecycleCoroutineScope
+) : BaseDialog(activity, scope) {
     fun show() {
-        if (activity.isFinishing || activity.isDestroyed) {
-            Logger.e("LlmSettingsDialog.show() 무시: Activity가 이미 종료 중/소멸됨")
-            return
-        }
-
         val binding = DialogLlmSettingsBinding.inflate(LayoutInflater.from(activity))
         binding.editAnthropicKey.setText(apiKeyStore.anthropicApiKey)
         binding.editOpenAiKey.setText(apiKeyStore.openAiApiKey)
@@ -61,11 +60,7 @@ class LlmSettingsDialog(
             }
         }
 
-        try {
-            dialog.show()
-        } catch (e: Exception) {
-            Logger.e("LLM 설정 다이얼로그 표시 실패", e)
-        }
+        safeShow(dialog)
     }
 
     private fun validateAndSave(
