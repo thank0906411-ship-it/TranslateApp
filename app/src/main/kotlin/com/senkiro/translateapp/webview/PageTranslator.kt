@@ -101,6 +101,63 @@ class PageTranslator(
         fun onLanguageDetected(htmlLang: String) {
             onLanguageDetected.invoke(htmlLang)
         }
+
+        /** 번역 실패로 표시된 블록을 사용자가 탭했을 때 그 블록 하나만 다시 번역 시도한다. */
+        @JavascriptInterface
+        fun onRetryTranslation(id: String, originalText: String) {
+            scope.launch { retryBlock(id, originalText) }
+        }
+    }
+
+    /**
+     * 실패 표시된 블록 하나만 재번역한다. 캐시에 이미 (실패한) 결과가 저장돼 있을 수
+     * 있으므로 캐시를 조회하지 않고 항상 엔진을 새로 호출한다 — 그래야 재시도의 의미가
+     * 있다. 성공하면 캐시도 최신 결과로 갱신해 이후 다른 블록/페이지에서 같은 문장을
+     * 만나도 실패한 옛 결과 대신 이번 성공 결과를 재사용하게 한다.
+     */
+    private suspend fun retryBlock(id: String, originalText: String) {
+        try {
+            val translated = withContext(Dispatchers.IO) {
+                engine.prepareModel(sourceLang, targetLang)
+                engine.translate(originalText, sourceLang, targetLang)
+            }
+            cache.put(originalText, sourceLang, targetLang, translated)
+
+            val stillFailed = sourceLang != targetLang &&
+                FallbackTranslator.isEffectivelyUntranslated(originalText, translated)
+
+            withContext(Dispatchers.Main) {
+                val result = JSONObject().put(id, translated)
+                webView.evaluateJavascript(
+                    "window.tappApplyTranslations(${JSONObject.quote(result.toString())})",
+                    null
+                )
+                if (stillFailed) {
+                    markBlocksAsFailed(mapOf(id to originalText))
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 네트워크 오류 등으로 재번역 자체가 실패한 경우. JS가 재시도 클릭 시 리스너를
+            // 먼저 제거해두므로(중복 클릭 방지), 여기서 다시 markBlocksAsFailed를 호출해
+            // 리스너를 재등록하지 않으면 사용자가 더 이상 탭으로 재시도할 수 없는 채로
+            // 밑줄만 남는다 — 반드시 재등록해야 한다.
+            Logger.e("번역 재시도 실패 (id=$id)", e)
+            withContext(Dispatchers.Main) { markBlocksAsFailed(mapOf(id to originalText)) }
+        }
+    }
+
+    /** JS의 tappMarkTranslationFailed를 호출해 블록에 실패 표시를 달거나 갱신한다. Dispatchers.Main에서 호출할 것. */
+    private fun markBlocksAsFailed(idToOriginal: Map<String, String>) {
+        val idsArray = JSONArray(idToOriginal.keys.toList())
+        val originalsJson = JSONObject()
+        idToOriginal.forEach { (id, original) -> originalsJson.put(id, original) }
+        webView.evaluateJavascript(
+            "window.tappMarkTranslationFailed(" +
+                "${JSONObject.quote(idsArray.toString())}, ${JSONObject.quote(originalsJson.toString())})",
+            null
+        )
     }
 
     private suspend fun translateAndApply(nodesJson: String) {
@@ -208,11 +265,7 @@ class PageTranslator(
                 webView.evaluateJavascript(script, null)
 
                 if (failedIds.isNotEmpty()) {
-                    val failedArray = JSONArray(failedIds)
-                    webView.evaluateJavascript(
-                        "window.tappMarkTranslationFailed(${JSONObject.quote(failedArray.toString())})",
-                        null
-                    )
+                    markBlocksAsFailed(failedIds.associateWith { idToText.getValue(it) })
                     onTranslationFailedDetected()
                 }
             }

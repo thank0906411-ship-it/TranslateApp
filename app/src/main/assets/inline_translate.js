@@ -204,22 +204,47 @@
     window.tappRevealPage();
   };
 
-  // Kotlin이 "엔진 폴백까지 시도했는데도 원문과 사실상 동일했던" 블록 id 목록을 넘기면,
-  // 해당 블록에 점선 밑줄과 툴팁을 달아 사용자가 번역 실패 가능성을 알아볼 수 있게 한다.
-  // 텍스트 자체를 건드리지 않으므로(스타일/속성만 추가) 인터랙티브 요소 보존 로직과
-  // 충돌하지 않는다.
+  // Kotlin이 "엔진 폴백까지 시도했는데도 원문과 사실상 동일했던" 블록 id 목록(및 각
+  // 블록의 원문 텍스트)을 넘기면, 해당 블록에 점선 밑줄과 툴팁을 달아 사용자가 번역
+  // 실패 가능성을 알아볼 수 있게 한다. 텍스트 자체를 건드리지 않으므로(스타일/속성만
+  // 추가) 인터랙티브 요소 보존 로직과 충돌하지 않는다. 인터랙티브 요소(링크/버튼 등)가
+  // 있는 블록은 탭 재시도 리스너를 달지 않는다 — 블록 전체에 클릭 리스너를 걸면 안의
+  // 링크 클릭과 충돌해 사용자가 페이지를 못 넘어가게 될 수 있기 때문이다. 원문 텍스트는
+  // el.textContent가 이미 번역문으로 치환된 뒤라 다시 꺼낼 수 없으므로, 실패 표시 시점에
+  // data-tapp-original 속성으로 따로 저장해둔다(재시도할 때 Kotlin에 다시 보내야 함).
   var failStyle = document.createElement('style');
-  failStyle.textContent = '.tapp-translate-failed { border-bottom: 1px dashed #e53935; }';
+  failStyle.textContent =
+    '.tapp-translate-failed { border-bottom: 1px dashed #e53935; }' +
+    '.tapp-translate-retryable { cursor: pointer; }';
   document.head.appendChild(failStyle);
 
-  window.tappMarkTranslationFailed = function (idsJson) {
+  window.tappMarkTranslationFailed = function (idsJson, originalsJson) {
     var ids = JSON.parse(idsJson);
+    var originals = JSON.parse(originalsJson);
     var refs = window.__tappBlockRefs || {};
     ids.forEach(function (id) {
       var el = refs[id];
       if (!el) return;
       el.classList.add('tapp-translate-failed');
-      el.setAttribute('title', '이 문장은 번역되지 않았을 수 있습니다.');
+
+      if (hasInteractiveDescendant(el)) {
+        el.setAttribute('title', '이 문장은 번역되지 않았을 수 있습니다.');
+        return;
+      }
+
+      el.classList.add('tapp-translate-retryable');
+      el.setAttribute('data-tapp-original', originals[id] || '');
+      el.setAttribute('title', '이 문장은 번역되지 않았을 수 있습니다. 눌러서 다시 시도하세요.');
+      el.addEventListener('click', function onRetryClick() {
+        if (!window.TranslateAppBridge || !window.TranslateAppBridge.onRetryTranslation) return;
+        var original = el.getAttribute('data-tapp-original');
+        if (!original) return;
+        // 재시도 중 중복 클릭을 막기 위해 리스너를 바로 제거한다. 재시도가 다시
+        // 실패하면 Kotlin이 tappMarkTranslationFailed를 다시 호출해 리스너를 재등록한다.
+        el.removeEventListener('click', onRetryClick);
+        el.classList.remove('tapp-translate-retryable');
+        window.TranslateAppBridge.onRetryTranslation(id, original);
+      });
     });
   };
 
