@@ -78,24 +78,16 @@
             android:layout_marginStart="8dp"
             android:text="@string/btn_translate" />
 
+        <!-- 용어집/LLM 설정은 둘 다 "번역 동작 방식을 설정하는" 성격이라 하나의 설정
+             메뉴로 묶었다(누르면 PopupMenu로 둘 중 하나를 고름). 기록/업데이트는
+             자주 쓰는 독립 기능이라 따로 둔다. -->
         <ImageButton
-            android:id="@+id/btnGlossary"
+            android:id="@+id/btnSettings"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/btn_glossary"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_menu_sort_alphabetically"
-            android:tint="?android:attr/textColorPrimary" />
-
-        <ImageButton
-            android:id="@+id/btnLlmSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/btn_llm_settings"
+            android:contentDescription="@string/btn_settings"
             android:padding="8dp"
             android:src="@android:drawable/ic_menu_manage"
             android:tint="?android:attr/textColorPrimary" />

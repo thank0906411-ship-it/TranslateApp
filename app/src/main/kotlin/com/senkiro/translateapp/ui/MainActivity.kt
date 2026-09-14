@@ -5,8 +5,10 @@ import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.MenuItem
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
@@ -107,9 +109,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnTranslate.setOnClickListener { loadFromInput() }
         binding.btnCheckUpdate.setOnClickListener { checkForUpdate() }
-        binding.btnGlossary.setOnClickListener { showGlossaryDialog() }
         binding.btnHistory.setOnClickListener { showHistoryDialog() }
-        binding.btnLlmSettings.setOnClickListener { showLlmSettingsDialog() }
+        binding.btnSettings.setOnClickListener { showSettingsMenu() }
         // 별도 버튼을 늘리는 대신, "기록" 버튼을 길게 누르면 이번 달 Cloud
         // Translation/LLM 후처리 사용량(대략치)을 Toast로 보여준다.
         binding.btnHistory.setOnLongClickListener {
@@ -293,6 +294,24 @@ class MainActivity : AppCompatActivity() {
         LlmSettingsDialog(activity = this, apiKeyStore = apiKeyStore, scope = lifecycleScope).show()
     }
 
+    /**
+     * 용어집/LLM 설정은 둘 다 "번역 동작 방식을 설정하는" 성격이라 상단 아이콘 버튼을
+     * 하나로 묶고, 눌렀을 때 PopupMenu로 둘 중 하나를 고르게 한다.
+     */
+    private fun showSettingsMenu() {
+        val popup = PopupMenu(this, binding.btnSettings)
+        popup.menu.add(0, MENU_ITEM_GLOSSARY, 0, R.string.settings_menu_glossary)
+        popup.menu.add(0, MENU_ITEM_LLM_SETTINGS, 1, R.string.settings_menu_llm)
+        popup.setOnMenuItemClickListener { item: MenuItem ->
+            when (item.itemId) {
+                MENU_ITEM_GLOSSARY -> showGlossaryDialog()
+                MENU_ITEM_LLM_SETTINGS -> showLlmSettingsDialog()
+            }
+            true
+        }
+        popup.show()
+    }
+
     private fun loadFromInput() {
         var url = binding.editUrl.text.toString().trim()
         if (url.isEmpty()) return
@@ -398,5 +417,10 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(getString(R.string.update_cancel_btn), null)
             .show()
+    }
+
+    companion object {
+        private const val MENU_ITEM_GLOSSARY = 1
+        private const val MENU_ITEM_LLM_SETTINGS = 2
     }
 }

@@ -39,4 +39,7 @@
     <string name="llm_settings_gpt_invalid">GPT API 키가 유효하지 않습니다. 키를 확인해주세요.</string>
     <string name="llm_settings_both_invalid">두 API 키 모두 유효하지 않습니다. 키를 확인해주세요.</string>
     <string name="llm_settings_validation_error">키를 확인하지 못했지만(네트워크 오류) 일단 저장했습니다. 실제로 번역할 때 키가 잘못됐다면 후처리 없이 1차 번역만 적용됩니다.</string>
+    <string name="btn_settings">설정</string>
+    <string name="settings_menu_glossary">용어집</string>
+    <string name="settings_menu_llm">LLM 설정</string>
 </resources>
