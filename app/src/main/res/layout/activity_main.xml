@@ -79,6 +79,15 @@
             android:text="@string/btn_glossary"
             android:textSize="11sp" />
 
+        <Button
+            android:id="@+id/btnLlmSettings"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:text="@string/btn_llm_settings"
+            android:textSize="11sp" />
+
     </LinearLayout>
 
     <ProgressBar

@@ -33,6 +33,36 @@ interface LlmPostProcessor {
 }
 
 /**
+ * Claude를 우선 시도하고, 설정 안 됐으면 GPT로 넘어가는 위임 래퍼. isConfigured/refine을
+ * 호출할 때마다 다시 판단하므로, 사용자가 앱의 "LLM 설정" 화면에서 API 키를 입력/삭제한
+ * 직후에도 앱 재시작 없이 바로 다음 번역부터 반영된다(PageTranslator가 이 프로퍼티를
+ * 캐시하지 않고 매 배치마다 새로 조회하기 때문에 가능).
+ */
+class DelegatingLlmPostProcessor(
+    private val claude: ClaudePostProcessor,
+    private val gpt: GptPostProcessor
+) : LlmPostProcessor {
+
+    private fun activeOrNull(): LlmPostProcessor? = when {
+        claude.isConfigured -> claude
+        gpt.isConfigured -> gpt
+        else -> null
+    }
+
+    override val isConfigured: Boolean get() = activeOrNull() != null
+
+    override suspend fun refine(
+        originalBlocks: List<String>,
+        translatedBlocks: List<String>,
+        targetLang: String,
+        contextBlocks: List<String>
+    ): List<String> {
+        val active = activeOrNull() ?: return translatedBlocks
+        return active.refine(originalBlocks, translatedBlocks, targetLang, contextBlocks)
+    }
+}
+
+/**
  * Claude/GPT 후처리기가 공통으로 쓰는 프롬프트. 원문과 1차 번역을 나란히 보여주고,
  * 문맥 일관성을 유지하되 개수/순서를 바꾸지 말라고 지시하며, 프롬프트 인젝션에 대비해
  * 원문/1차 번역 내용을 신뢰할 수 없는 데이터로 취급하라는 경고를 포함한다.

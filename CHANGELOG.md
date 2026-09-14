@@ -2,6 +2,17 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## 새 기능
+
+- **앱 안에서 LLM API 키 직접 입력**: 공개 release APK는 Claude/GPT 키를 빌드에
+  넣지 않아(release.yml이 의도적으로 제외) 지금까지는 로컬 빌드를 새로 하지 않는
+  이상 LLM 문맥 후처리를 켤 방법이 없었다. 화면 상단 "LLM" 버튼으로 설정 다이얼로그
+  (`LlmSettingsDialog`)를 열어 API 키를 입력하면 `ApiKeyStore`(SharedPreferences)에
+  저장되고, `ClaudePostProcessor`/`GptPostProcessor`가 이 저장된 값을 `local.properties`
+  값보다 우선 사용한다. `DelegatingLlmPostProcessor`가 매 번역 배치마다 어느 후처리기가
+  활성 상태인지 다시 판단하므로, 키를 입력/삭제한 직후 앱 재시작 없이 바로 다음
+  번역부터 반영된다.
+
 ## UI 단순화
 
 - **도착어 드롭다운 제거**: 출발어는 자동 감지(`<html lang>`)가 대부분 알아서 맞춰주고,

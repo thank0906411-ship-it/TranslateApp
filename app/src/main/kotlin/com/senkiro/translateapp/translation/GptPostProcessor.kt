@@ -1,6 +1,7 @@
 package com.senkiro.translateapp.translation
 
 import com.senkiro.translateapp.BuildConfig
+import com.senkiro.translateapp.settings.ApiKeyStore
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -15,16 +16,21 @@ import java.util.concurrent.TimeUnit
  * ClaudePostProcessor와 동일한 프롬프트 구조를 쓰고, 구조화된 출력(response_format의
  * json_schema)으로 결과 개수/순서를 강제한다.
  *
- * local.properties의 OPENAI_API_KEY로 활성화. 키가 없으면 isConfigured가 false.
+ * API 키는 앱 "LLM 설정" 화면에서 입력한 값(ApiKeyStore)을 우선 쓰고, 없으면
+ * local.properties의 OPENAI_API_KEY(로컬 빌드 전용)로 폴백한다. 둘 다 없으면
+ * isConfigured가 false.
  */
-class GptPostProcessor : LlmPostProcessor {
+class GptPostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPostProcessor {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    override val isConfigured: Boolean get() = BuildConfig.OPENAI_API_KEY.isNotBlank()
+    private val apiKey: String
+        get() = apiKeyStore?.openAiApiKey?.takeIf { it.isNotBlank() } ?: BuildConfig.OPENAI_API_KEY
+
+    override val isConfigured: Boolean get() = apiKey.isNotBlank()
 
     override suspend fun refine(
         originalBlocks: List<String>,
@@ -83,7 +89,7 @@ class GptPostProcessor : LlmPostProcessor {
         val body = requestJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder()
             .url("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", "Bearer ${BuildConfig.OPENAI_API_KEY}")
+            .header("Authorization", "Bearer $apiKey")
             .post(body)
             .build()
 

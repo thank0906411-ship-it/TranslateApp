@@ -17,7 +17,9 @@ import com.senkiro.translateapp.cache.TranslationCache
 import com.senkiro.translateapp.databinding.ActivityMainBinding
 import com.senkiro.translateapp.glossary.Glossary
 import com.senkiro.translateapp.history.History
+import com.senkiro.translateapp.settings.ApiKeyStore
 import com.senkiro.translateapp.translation.ClaudePostProcessor
+import com.senkiro.translateapp.translation.DelegatingLlmPostProcessor
 import com.senkiro.translateapp.translation.FallbackTranslator
 import com.senkiro.translateapp.translation.GoogleTranslateEngine
 import com.senkiro.translateapp.translation.GoogleTranslateException
@@ -52,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var history: History
     private lateinit var usageTracker: UsageTracker
     private lateinit var updateChecker: AppUpdateChecker
+    private lateinit var apiKeyStore: ApiKeyStore
     private lateinit var pageTranslator: PageTranslator
 
     /** 세션(앱 실행) 중 한 번만 Cloud Translation 과금/권한 문제를 알리기 위한 플래그. */
@@ -84,6 +87,7 @@ class MainActivity : AppCompatActivity() {
         history = History(applicationContext)
         usageTracker = UsageTracker(applicationContext)
         updateChecker = AppUpdateChecker(applicationContext)
+        apiKeyStore = ApiKeyStore(applicationContext)
         mlKitTranslator = MLKitTranslator()
         translator = FallbackTranslator(
             primary = GoogleTranslateEngine(),
@@ -105,6 +109,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnCheckUpdate.setOnClickListener { checkForUpdate() }
         binding.btnGlossary.setOnClickListener { showGlossaryDialog() }
         binding.btnHistory.setOnClickListener { showHistoryDialog() }
+        binding.btnLlmSettings.setOnClickListener { showLlmSettingsDialog() }
         // 별도 버튼을 늘리는 대신, "기록" 버튼을 길게 누르면 이번 달 Cloud
         // Translation/LLM 후처리 사용량(대략치)을 Toast로 보여준다.
         binding.btnHistory.setOnLongClickListener {
@@ -142,14 +147,14 @@ class MainActivity : AppCompatActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
 
-        // Claude를 우선 시도하고, 설정 안 됐으면 GPT, 둘 다 없으면 후처리 없이 1차 번역만 쓴다.
-        val claudePostProcessor = ClaudePostProcessor()
-        val gptPostProcessor = GptPostProcessor()
-        val postProcessor = when {
-            claudePostProcessor.isConfigured -> claudePostProcessor
-            gptPostProcessor.isConfigured -> gptPostProcessor
-            else -> null
-        }
+        // Claude를 우선 시도하고, 설정 안 됐으면 GPT, 둘 다 없으면 후처리 없이 1차 번역만
+        // 쓴다. DelegatingLlmPostProcessor는 매 번역 배치마다 isConfigured를 다시
+        // 평가하므로, 사용자가 "LLM 설정" 화면에서 키를 입력/삭제하면 앱 재시작 없이
+        // 바로 다음 번역부터 반영된다.
+        val postProcessor = DelegatingLlmPostProcessor(
+            claude = ClaudePostProcessor(apiKeyStore),
+            gpt = GptPostProcessor(apiKeyStore)
+        )
 
         pageTranslator = PageTranslator(
             webView = webView,
@@ -278,6 +283,14 @@ class MainActivity : AppCompatActivity() {
                 binding.webView.loadUrl(url)
             }
         ).show()
+    }
+
+    /**
+     * Claude/GPT API 키를 입력하는 설정 다이얼로그. 공개 release APK는 이 키들을 빌드에
+     * 주입하지 않으므로, 여기서 입력하는 것이 LLM 문맥 후처리를 켤 수 있는 유일한 방법이다.
+     */
+    private fun showLlmSettingsDialog() {
+        LlmSettingsDialog(activity = this, apiKeyStore = apiKeyStore).show()
     }
 
     private fun loadFromInput() {

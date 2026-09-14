@@ -1,6 +1,7 @@
 package com.senkiro.translateapp.translation
 
 import com.senkiro.translateapp.BuildConfig
+import com.senkiro.translateapp.settings.ApiKeyStore
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -15,17 +16,23 @@ import java.util.concurrent.TimeUnit
  * 원문/1차 번역 블록 목록을 통째로 프롬프트에 넣어, 페이지 전체 맥락에서 자연스럽게
  * 교정된 번역 목록을 JSON 배열로 돌려받는다 (구조화된 출력으로 개수/순서를 강제).
  *
- * local.properties의 ANTHROPIC_API_KEY로 활성화. 키가 없으면 isConfigured가 false이고,
+ * API 키는 두 경로로 얻는다: (1) 앱 "LLM 설정" 화면에서 사용자가 직접 입력해
+ * `ApiKeyStore`에 저장한 값(공개 release APK에서 유일하게 활성화 가능한 방법),
+ * (2) local.properties의 ANTHROPIC_API_KEY(로컬 빌드 전용, BuildConfig로 주입).
+ * (1)이 있으면 (2)보다 우선한다. 둘 다 없으면 isConfigured가 false이고,
  * 호출부(PageTranslator)는 이 경우 후처리를 건너뛰고 1차 번역 결과를 그대로 쓴다.
  */
-class ClaudePostProcessor : LlmPostProcessor {
+class ClaudePostProcessor(private val apiKeyStore: ApiKeyStore? = null) : LlmPostProcessor {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS) // LLM 응답은 번역 API보다 오래 걸릴 수 있다.
         .build()
 
-    override val isConfigured: Boolean get() = BuildConfig.ANTHROPIC_API_KEY.isNotBlank()
+    private val apiKey: String
+        get() = apiKeyStore?.anthropicApiKey?.takeIf { it.isNotBlank() } ?: BuildConfig.ANTHROPIC_API_KEY
+
+    override val isConfigured: Boolean get() = apiKey.isNotBlank()
 
     override suspend fun refine(
         originalBlocks: List<String>,
@@ -83,7 +90,7 @@ class ClaudePostProcessor : LlmPostProcessor {
         val body = requestJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder()
             .url("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", BuildConfig.ANTHROPIC_API_KEY)
+            .header("x-api-key", apiKey)
             .header("anthropic-version", "2023-06-01")
             .post(body)
             .build()

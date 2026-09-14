@@ -91,8 +91,17 @@ GOOGLE_TRANSLATE_API_KEY=본인의_API_키
 ### 2. LLM 후처리 (Claude/GPT, 페이지 문맥 다듬기)
 
 ML Kit/Cloud Translation은 문단 하나하나를 독립적으로 번역해서 문맥(대명사, 어투
-일관성)을 모른다. 아래 중 하나를 추가하면 새로 번역된 문단들을 페이지 문맥과 함께
-LLM에 보내 자연스럽게 다듬는다.
+일관성)을 모른다. Claude 또는 GPT API 키를 설정하면 새로 번역된 문단들을 페이지
+문맥과 함께 LLM에 보내 자연스럽게 다듬는다.
+
+**앱 안에서 직접 설정(권장, 누구나 가능)** — 화면 상단 "LLM" 버튼에서 Claude/GPT
+API 키를 입력하면 바로 적용된다(앱 재시작 불필요). 공개 release APK는 이 키들을
+빌드에 넣지 않으므로(아래 [배포하기](#배포하기) 참고), 이 설정 화면이 LLM 후처리를
+켤 수 있는 사실상 유일한 방법이다. 키는 이 기기의 앱 전용 저장소에만 남고 외부로
+전송되지 않는다(`settings/ApiKeyStore.kt`, `SharedPreferences`).
+
+**로컬 빌드에서 설정(개발자용)** — `local.properties`에 아래 중 하나를 추가하면
+로컬 빌드에서도 기본값으로 켤 수 있다. 위의 앱 내 설정이 있으면 그쪽이 우선한다.
 
 ```properties
 ANTHROPIC_API_KEY=본인의_Claude_API_키
