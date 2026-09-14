@@ -14,6 +14,8 @@ import com.senkiro.translateapp.translation.GptPostProcessor
 import com.senkiro.translateapp.utils.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -75,12 +77,20 @@ class LlmSettingsDialog(
         scope.launch {
             // true: 저장하고 다이얼로그를 닫는다. false: 버튼을 다시 활성화하고 재시도를 기다린다.
             val shouldCloseDialog = try {
-                val anthropicOk = withContext(Dispatchers.IO) {
-                    anthropicKey.isBlank() || ClaudePostProcessor().validateApiKey(anthropicKey)
+                // 두 키를 순차로 검증하면 readTimeout(60초)이 두 번 겹쳐 최악의 경우
+                // 저장 버튼이 2분 가까이 "확인 중…" 상태로 멈춰 보일 수 있어, async로
+                // 동시에 시작해 둘 다 끝날 때까지만 기다린다.
+                val results = withContext(Dispatchers.IO) {
+                    val anthropicDeferred = async {
+                        anthropicKey.isBlank() || ClaudePostProcessor().validateApiKey(anthropicKey)
+                    }
+                    val openAiDeferred = async {
+                        openAiKey.isBlank() || GptPostProcessor().validateApiKey(openAiKey)
+                    }
+                    awaitAll(anthropicDeferred, openAiDeferred)
                 }
-                val openAiOk = withContext(Dispatchers.IO) {
-                    openAiKey.isBlank() || GptPostProcessor().validateApiKey(openAiKey)
-                }
+                val anthropicOk = results[0]
+                val openAiOk = results[1]
 
                 when {
                     !anthropicOk && !openAiOk -> {

@@ -211,6 +211,23 @@ Play Store 없이도 앱 안에서 "업데이트 확인" 버튼으로 새 버전
 > (LLM 후처리, 결제 방어 수단이 없어 위험이 더 큼)는 **절대 넣지 않는다.**
 > 본인만 쓰는 로컬 빌드는 `local.properties`에 원하는 키를 자유롭게 넣어 쓴다.
 
+### Google Play Protect 경고 / 백신 오탐에 대해
+
+Play Store가 아닌 곳(GitHub Releases)에서 받은 APK를 설치하면 Android가
+"알 수 없는 출처의 앱"이라는 경고를 띄우는데, 이는 서명되지 않은 배포 방식
+자체에 대한 일반적인 경고이지 바이러스 탐지가 아니다 — Play Store를 거치지
+않는 모든 앱에서 똑같이 뜬다.
+
+2026-09-14에 GitHub Actions로 빌드한 **release APK**(실제 배포 파일)를
+VirusTotal(68개 백신 엔진)에 검사한 결과 **탐지 0건**이었다. 반면 같은 시점에
+로컬 `assembleDebug`로 만든 **debug APK**를 검사했을 때는 Google과 Ikarus
+두 엔진이 "Trojan-Spy.AndroidOS.SMSSpy"로 오탐했다 — 이 앱은 SMS 관련
+권한(`READ_SMS` 등)이나 코드를 전혀 포함하지 않으므로(`AndroidManifest.xml`,
+전체 소스 검색으로 확인) 명백한 오탐이며, 원인은 debug 빌드 특유의 서명
+방식과 최적화되지 않은 코드 구조로 추정된다(서명·최적화가 된 release
+빌드에서는 같은 두 엔진도 깨끗하게 통과했다). **테스터에게 배포하는 파일은
+항상 release APK이므로 이 오탐과는 무관하다.**
+
 ### 새 버전 배포 절차 (GitHub Actions 자동 빌드)
 
 `.github/workflows/release.yml`이 `v*` 형태의 태그가 push되면 자동으로 release
