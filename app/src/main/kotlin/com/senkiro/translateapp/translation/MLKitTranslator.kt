@@ -1,6 +1,8 @@
 package com.senkiro.translateapp.translation
 
 import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.languageid.LanguageIdentification
+import com.google.mlkit.nl.languageid.LanguageIdentifier
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
@@ -24,6 +26,12 @@ class MLKitTranslator : TranslationEngine {
     private var cachedTranslator: Translator? = null
     private var cachedSourceLang: String? = null
     private var cachedTargetLang: String? = null
+
+    // 언어 식별기는 상태가 없어(캐시된 번역기와 달리 언어쌍에 의존하지 않음) 하나만
+    // 만들어 재사용한다. 별도 네이티브 리소스를 쥐고 있지 않아 close()로 해제할 필요는 없다.
+    private val languageIdentifier: LanguageIdentifier by lazy {
+        LanguageIdentification.getClient()
+    }
 
     private fun getOrCreateTranslator(sourceLang: String, targetLang: String): Translator {
         if (cachedTranslator != null &&
@@ -70,6 +78,35 @@ class MLKitTranslator : TranslationEngine {
     override suspend fun translate(text: String, sourceLang: String, targetLang: String): String = mutex.withLock {
         val translator = getOrCreateTranslator(sourceLang, targetLang)
         translator.translate(text).await()
+    }
+
+    override suspend fun translateAutoDetect(text: String, targetLang: String): AutoDetectResult {
+        val detected = detectLanguage(text)
+        if (detected == null || detected == targetLang) {
+            // 감지 실패(신뢰도 낮음)나 이미 도착어인 블록은 번역할 필요가 없다 —
+            // 원문을 그대로 돌려주고, 캐시 키는 호출부가 targetLang으로 대체하게 둔다.
+            return AutoDetectResult(text, detected)
+        }
+        // sourceLang이 "auto"일 때는 MainActivity/PageTranslator가 prepareModel을
+        // 호출하지 않으므로(그 시점엔 어떤 모델이 필요할지 알 수 없다), 실제로 감지된
+        // 언어의 모델이 아직 없을 수 있다 — 여기서 직접 보장한다.
+        prepareModel(detected, targetLang)
+        val translated = translate(text, detected, targetLang)
+        return AutoDetectResult(translated, detected)
+    }
+
+    /**
+     * identifyLanguage()는 판별 실패 시 "und"(undetermined)를 돌려준다. 태그에
+     * 지역/스크립트 서브태그가 붙을 수 있어(예: "zh-Hans") 주 언어 서브태그만
+     * 남겨 SupportedLanguages의 코드 체계(예: "zh")와 맞춘다. TranslateLanguage가
+     * 지원하지 않는 언어(fromLanguageTag가 null)면 어차피 번역할 수 없으므로
+     * 감지 실패로 취급한다.
+     */
+    private suspend fun detectLanguage(text: String): String? {
+        val languageTag = languageIdentifier.identifyLanguage(text).await()
+        if (languageTag == "und") return null
+        val primarySubtag = languageTag.substringBefore('-').lowercase()
+        return if (TranslateLanguage.fromLanguageTag(primarySubtag) != null) primarySubtag else null
     }
 
     /**

@@ -10,6 +10,11 @@ data class LanguageOption(val displayName: String, val code: String) {
  * 드롭다운이 너무 길어지지 않도록 자주 쓰는 언어 위주로 추린다.
  */
 object SupportedLanguages {
+    /** 출발어 전용 특수 코드 — 페이지 안에 여러 언어가 섞여 있을 때 블록마다 언어를 감지해 번역한다. */
+    const val AUTO_DETECT_CODE = "auto"
+
+    val AUTO_DETECT = LanguageOption("자동 감지", AUTO_DETECT_CODE)
+
     val ALL = listOf(
         LanguageOption("한국어", "ko"),
         LanguageOption("영어", "en"),
@@ -22,6 +27,9 @@ object SupportedLanguages {
         LanguageOption("베트남어", "vi"),
         LanguageOption("태국어", "th")
     )
+
+    /** 출발어 드롭다운 전용 목록 — 맨 앞에 "자동 감지"를 추가한다. 도착어로는 노출하지 않는다. */
+    val SOURCE_OPTIONS = listOf(AUTO_DETECT) + ALL
 
     val DEFAULT_SOURCE = ALL.first { it.code == "en" }
     val DEFAULT_TARGET = ALL.first { it.code == "ko" }

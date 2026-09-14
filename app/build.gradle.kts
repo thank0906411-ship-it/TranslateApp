@@ -34,8 +34,8 @@ android {
         applicationId = "com.senkiro.translateapp"
         minSdk = 26
         targetSdk = 34
-        versionCode = 35
-        versionName = "35.0"
+        versionCode = 36
+        versionName = "36.0"
         buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"$googleTranslateApiKey\"")
         buildConfigField("String", "GITHUB_UPDATE_PAT", "\"$githubUpdatePat\"")
         buildConfigField("String", "ANTHROPIC_API_KEY", "\"$anthropicApiKey\"")
@@ -99,6 +99,8 @@ dependencies {
 
     // ML Kit 온디바이스 번역
     implementation("com.google.mlkit:translate:17.0.3")
+    // ML Kit 언어 식별 — 출발어 "자동 감지" 옵션에서 블록별 언어를 판별할 때 사용
+    implementation("com.google.mlkit:language-id:17.0.6")
 
     // Room (로컬 캐싱)
     implementation("androidx.room:room-runtime:2.6.1")

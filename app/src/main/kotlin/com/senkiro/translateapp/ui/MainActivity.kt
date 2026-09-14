@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         // 이미 한 번 실기기 회귀가 난 적이 있으므로, 배포 전 반드시 실기기에서 스피너가
         // 정상적으로 열리고 항목 선택이 되는지 확인해야 한다.
         val adapter = object : ArrayAdapter<LanguageOption>(
-            this, android.R.layout.simple_spinner_dropdown_item, SupportedLanguages.ALL
+            this, android.R.layout.simple_spinner_dropdown_item, SupportedLanguages.SOURCE_OPTIONS
         ) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val view = super.getView(position, convertView, parent)
@@ -217,7 +217,7 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 
         binding.spinnerSourceLang.adapter = adapter
-        binding.spinnerSourceLang.setSelection(SupportedLanguages.ALL.indexOf(SupportedLanguages.DEFAULT_SOURCE))
+        binding.spinnerSourceLang.setSelection(SupportedLanguages.SOURCE_OPTIONS.indexOf(SupportedLanguages.DEFAULT_SOURCE))
 
         binding.spinnerSourceLang.onItemSelectedListener = languageSelectedListener { option ->
             if (!isApplyingDetectedLang) {
@@ -272,7 +272,7 @@ class MainActivity : AppCompatActivity() {
 
         val detected = SupportedLanguages.findByHtmlLang(htmlLang) ?: return
         val currentPosition = binding.spinnerSourceLang.selectedItemPosition
-        val newPosition = SupportedLanguages.ALL.indexOf(detected)
+        val newPosition = SupportedLanguages.SOURCE_OPTIONS.indexOf(detected)
         if (newPosition < 0 || newPosition == currentPosition) return
 
         // setSelection()은 onItemSelected를 동기적으로 트리거하므로, 그 안에서
@@ -291,7 +291,7 @@ class MainActivity : AppCompatActivity() {
             private var isFirstCall = true
 
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                onSelected(SupportedLanguages.ALL[position])
+                onSelected(SupportedLanguages.SOURCE_OPTIONS[position])
                 // 초기 setSelection() 호출로 인한 첫 콜백은 재번역을 트리거하지 않는다.
                 if (isFirstCall) {
                     isFirstCall = false

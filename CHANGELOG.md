@@ -2,6 +2,32 @@
 
 버그 수정과 안정성 개선 히스토리를 모아둔 파일. 사용법은 [README.md](README.md)를 참고.
 
+## 새 기능 (출발어 자동 감지 — 다국어 혼합 페이지 지원)
+
+- **출발어 드롭다운에 "자동 감지" 옵션 추가**: 한 페이지 안에 여러 언어가 섞여
+  있는 사이트(다국어 커뮤니티/포럼 등)에서, 출발어를 하나로 고정하면 그 언어가
+  아닌 블록은 번역이 안 되거나 엉뚱하게 번역되는 문제가 있었다. "자동 감지"를
+  선택하면 블록(문단/리스트 항목 등)마다 실제 언어를 판별해 그 언어 → 도착어로
+  번역한다. 이미 도착어인 블록은 판별 후 번역하지 않고 원문 그대로 둔다.
+  - **Cloud Translation 경로**: `source` 파라미터를 생략하면 API가 언어 감지와
+    번역을 한 번의 호출로 함께 처리하고 응답의 `detectedSourceLanguage`로
+    감지된 언어를 알려준다(`GoogleTranslateEngine.translateAutoDetect`) — 감지와
+    번역을 따로 호출하는 것보다 API 호출 횟수를 절반으로 줄인다.
+  - **ML Kit 경로**: 새 의존성 `com.google.mlkit:language-id`(`LanguageIdentifier`)로
+    먼저 언어를 감지한 뒤, 그 결과로 번역 모델을 준비/호출한다
+    (`MLKitTranslator.translateAutoDetect`). 감지 실패("und")이거나 감지된
+    언어를 번역기가 지원하지 않으면(`TranslateLanguage.fromLanguageTag`가 null)
+    감지 실패로 취급해 원문을 그대로 둔다.
+  - `TranslationEngine` 인터페이스에 `translateAutoDetect(text, targetLang):
+    AutoDetectResult`를 추가하고, `FallbackTranslator`도 기존 `translate()`와
+    동일한 폴백/재시도 패턴(Cloud 실패 시 ML Kit 폴백, 번역 실패 감지 시 ML Kit
+    재시도)을 이 경로에도 그대로 적용했다.
+  - 자동 감지 모드에서는 번역 캐시(`TranslationCache`)를 건너뛴다 — 캐시 키가
+    실제 언어 코드로 만들어지는데 사전에 어떤 언어인지 알 수 없어서, 매번 새로
+    감지+번역한다(다국어 혼합 페이지 자체가 흔치 않아 부담은 크지 않다고 판단).
+  - `SupportedLanguages.SOURCE_OPTIONS`(자동 감지 + 기존 언어 목록)를 출발어
+    드롭다운 전용으로 신설해 `ALL`(도착어 등 다른 용도에도 쓰임)과 분리했다.
+
 ## 버그 수정 (다크모드 언어 스피너 글자색)
 
 - **다크모드에서 언어 선택 스피너 글자가 안 보이던 문제 해결**: 표준 리소스

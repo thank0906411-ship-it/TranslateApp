@@ -8,6 +8,7 @@ import com.senkiro.translateapp.glossary.Glossary
 import com.senkiro.translateapp.glossary.GlossaryApplier
 import com.senkiro.translateapp.translation.FallbackTranslator
 import com.senkiro.translateapp.translation.LlmPostProcessor
+import com.senkiro.translateapp.translation.SupportedLanguages
 import com.senkiro.translateapp.translation.TranslationEngine
 import com.senkiro.translateapp.usage.UsageTracker
 import com.senkiro.translateapp.utils.Logger
@@ -117,13 +118,13 @@ class PageTranslator(
      */
     private suspend fun retryBlock(id: String, originalText: String) {
         try {
-            val translated = withContext(Dispatchers.IO) {
-                engine.prepareModel(sourceLang, targetLang)
-                engine.translate(originalText, sourceLang, targetLang)
+            val (translated, effectiveSourceLang) = withContext(Dispatchers.IO) {
+                if (!isAutoDetect) engine.prepareModel(sourceLang, targetLang)
+                translateWithEffectiveLang(originalText)
             }
-            cache.put(originalText, sourceLang, targetLang, translated)
+            cache.put(originalText, effectiveSourceLang, targetLang, translated)
 
-            val stillFailed = sourceLang != targetLang &&
+            val stillFailed = effectiveSourceLang != targetLang &&
                 FallbackTranslator.isEffectivelyUntranslated(originalText, translated)
 
             withContext(Dispatchers.Main) {
@@ -146,6 +147,23 @@ class PageTranslator(
             Logger.e("번역 재시도 실패 (id=$id)", e)
             withContext(Dispatchers.Main) { markBlocksAsFailed(mapOf(id to originalText)) }
         }
+    }
+
+    /** sourceLang이 "자동 감지"인지 여부. */
+    private val isAutoDetect: Boolean get() = sourceLang == SupportedLanguages.AUTO_DETECT_CODE
+
+    /**
+     * 텍스트 하나를 번역하고, 캐시/실패판정에 실제로 쓰인 출발어 코드를 함께 돌려준다.
+     * 자동 감지 모드에서는 블록마다 실제 언어가 다를 수 있으므로, 고정된 sourceLang
+     * 대신 이 결과를 캐시 키와 "번역 실패" 판정에 써야 한다. 감지에 실패하면 캐시 오염을
+     * 피하기 위해 "auto"를 그대로 키로 쓴다(다음에도 같은 문장이면 다시 감지를 시도하게 됨).
+     */
+    private suspend fun translateWithEffectiveLang(text: String): Pair<String, String> {
+        if (!isAutoDetect) {
+            return engine.translate(text, sourceLang, targetLang) to sourceLang
+        }
+        val result = engine.translateAutoDetect(text, targetLang)
+        return result.translatedText to (result.detectedSourceLang ?: SupportedLanguages.AUTO_DETECT_CODE)
     }
 
     /** JS의 tappMarkTranslationFailed를 호출해 블록에 실패 표시를 달거나 갱신한다. Dispatchers.Main에서 호출할 것. */
@@ -172,10 +190,17 @@ class PageTranslator(
 
             if (idToText.isEmpty()) return
 
-            withContext(Dispatchers.IO) { engine.prepareModel(sourceLang, targetLang) }
+            // 자동 감지 모드는 블록마다 실제 출발어가 다를 수 있어 미리 모델 하나를 준비해둘
+            // 수 없다 — 각 엔진 구현체(translateAutoDetect)가 감지된 언어에 맞춰 그때그때 준비한다.
+            if (!isAutoDetect) {
+                withContext(Dispatchers.IO) { engine.prepareModel(sourceLang, targetLang) }
+            }
 
             val applier = glossaryApplier
             val idToTranslated = LinkedHashMap<String, String>()
+            // 자동 감지 모드에서 블록별로 실제 감지된 출발어("번역 실패" 판정에 사용). 일반
+            // 모드에서는 고정된 sourceLang을 그대로 쓰므로 채우지 않는다.
+            val idToEffectiveSourceLang = HashMap<String, String>()
             // LLM 후처리 대상 — 이번에 실제로 새로 번역된(캐시 미스) 블록만 모은다. 캐시 히트
             // 블록까지 매번 다시 LLM에 보내면 문맥 효과에 비해 비용/지연이 커지기 때문이다.
             val postProcessTargets = LinkedHashMap<String, Pair<String, String>>() // id -> (원문, 1차번역)
@@ -185,12 +210,19 @@ class PageTranslator(
                     val (textToTranslate, placeholders) = applier.applyPlaceholders(originalText)
 
                     if (placeholders.isEmpty()) {
-                        val cached = cache.get(originalText, sourceLang, targetLang)
+                        // 자동 감지 모드는 캐시를 건너뛴다 — 실제 언어를 미리 모르는 채로는
+                        // 올바른 캐시 키를 만들 수 없고, 페이지 안에 언어가 섞여 있는 상황
+                        // 자체가 흔치 않아 매번 새로 감지+번역해도 부담이 크지 않다.
+                        val cached = if (isAutoDetect) null else cache.get(originalText, sourceLang, targetLang)
                         if (cached != null) {
                             idToTranslated[id] = cached
                         } else {
-                            val translated = engine.translate(originalText, sourceLang, targetLang)
-                            cache.put(originalText, sourceLang, targetLang, translated)
+                            val (translated, effectiveSourceLang) = translateWithEffectiveLang(originalText)
+                            if (isAutoDetect) {
+                                idToEffectiveSourceLang[id] = effectiveSourceLang
+                            } else {
+                                cache.put(originalText, sourceLang, targetLang, translated)
+                            }
                             idToTranslated[id] = translated
                             postProcessTargets[id] = originalText to translated
                         }
@@ -199,13 +231,14 @@ class PageTranslator(
                         // 적용된 결과를 캐시하면, 나중에 용어집이 바뀌었을 때 캐시된 옛 치환
                         // 결과와 새 복원 매핑이 어긋날 수 있어 정확성을 우선해 캐시를 건너뛴다.
                         // LLM 후처리 대상에서도 제외한다 — 후처리가 고정 번역어를 다시 바꿔버릴 수 있다.
-                        val translated = engine.translate(textToTranslate, sourceLang, targetLang)
+                        val (translated, effectiveSourceLang) = translateWithEffectiveLang(textToTranslate)
+                        if (isAutoDetect) idToEffectiveSourceLang[id] = effectiveSourceLang
                         val restored = applier.restorePlaceholders(translated, placeholders)
                         idToTranslated[id] = restored
                             // 번역기가 플레이스홀더 기호를 변형해 복원에 실패하면(드묾),
                             // "⟦0⟧"이 그대로 노출되는 것보다는 용어집 없이 원문을 다시
                             // 번역한 결과를 보여주는 편이 훨씬 안전하다.
-                            ?: engine.translate(originalText, sourceLang, targetLang)
+                            ?: translateWithEffectiveLang(originalText).first
                     }
                 }
 
@@ -251,14 +284,14 @@ class PageTranslator(
             // 실패한 것으로 보고, 화면에서 사용자가 알아볼 수 있게 표시해준다(재시도는
             // 이미 FallbackTranslator 내부에서 ML Kit으로 한 차례 시도된 뒤이므로 여기서는
             // 감지/표시만 담당한다). 언어쌍이 같은 경우는 원문=번역문이 정상이라 제외한다.
-            val failedIds = if (sourceLang != targetLang) {
-                idToTranslated.filterKeys { id ->
-                    val original = idToText[id]
-                    original != null && FallbackTranslator.isEffectivelyUntranslated(original, idToTranslated.getValue(id))
-                }.keys.toList()
-            } else {
-                emptyList()
-            }
+            // 자동 감지 모드에서는 블록마다 실제 감지된 출발어를 써야 한다 — 이미 도착어인
+            // 블록(번역하지 않고 원문 그대로 둔 블록)까지 "번역 실패"로 오판하면 안 되기 때문이다.
+            val failedIds = idToTranslated.filterKeys { id ->
+                val original = idToText[id] ?: return@filterKeys false
+                val effectiveSourceLang = if (isAutoDetect) idToEffectiveSourceLang[id] else sourceLang
+                effectiveSourceLang != null && effectiveSourceLang != targetLang &&
+                    FallbackTranslator.isEffectivelyUntranslated(original, idToTranslated.getValue(id))
+            }.keys.toList()
 
             withContext(Dispatchers.Main) {
                 val script = "window.tappApplyTranslations(${JSONObject.quote(result.toString())})"

@@ -48,11 +48,25 @@ class GoogleTranslateEngine : TranslationEngine {
     }
 
     override suspend fun translate(text: String, sourceLang: String, targetLang: String): String {
+        return callTranslateApi(text, sourceLang, targetLang).translatedText
+    }
+
+    override suspend fun translateAutoDetect(text: String, targetLang: String): AutoDetectResult {
+        // source를 아예 생략하면 Cloud Translation이 언어를 자동 감지해 번역까지
+        // 한 번의 호출로 처리하고, 응답에 detectedSourceLanguage를 함께 돌려준다 —
+        // 감지 따로 번역 따로 호출하는 것보다 API 호출 횟수를 절반으로 줄인다.
+        val result = callTranslateApi(text, sourceLang = null, targetLang)
+        return AutoDetectResult(result.translatedText, result.detectedSourceLang)
+    }
+
+    private data class ApiResult(val translatedText: String, val detectedSourceLang: String?)
+
+    private suspend fun callTranslateApi(text: String, sourceLang: String?, targetLang: String): ApiResult {
         if (!isConfigured) throw IOException("GOOGLE_TRANSLATE_API_KEY가 설정되지 않았습니다.")
 
         val json = JSONObject().apply {
             put("q", text)
-            put("source", sourceLang)
+            if (sourceLang != null) put("source", sourceLang)
             put("target", targetLang)
             put("format", "text")
         }
@@ -75,11 +89,16 @@ class GoogleTranslateEngine : TranslationEngine {
                     else -> GoogleTranslateException.Other(message)
                 }
             }
-            return JSONObject(responseBody)
+            val translation = JSONObject(responseBody)
                 .getJSONObject("data")
                 .getJSONArray("translations")
                 .getJSONObject(0)
-                .getString("translatedText")
+            return ApiResult(
+                translatedText = translation.getString("translatedText"),
+                // source를 지정해서 호출한 경우(일반 경로)는 이 필드가 없다 —
+                // optString의 기본값 ""을 null로 정규화한다.
+                detectedSourceLang = translation.optString("detectedSourceLanguage", "").ifBlank { null }
+            )
         }
     }
 }
@@ -153,6 +172,42 @@ class FallbackTranslator(
             }
         }
         return mlKitFallback.translate(text, sourceLang, targetLang)
+    }
+
+    override suspend fun translateAutoDetect(text: String, targetLang: String): AutoDetectResult {
+        if (usePrimary()) {
+            try {
+                val result = primary.translateAutoDetect(text, targetLang)
+                onCloudTranslateSuccess(text.length)
+
+                val detected = result.detectedSourceLang
+                if (detected != null && detected != targetLang &&
+                    isEffectivelyUntranslated(text, result.translatedText)
+                ) {
+                    try {
+                        mlKitFallback.prepareModel(detected, targetLang)
+                        val retried = mlKitFallback.translate(text, detected, targetLang)
+                        if (!isEffectivelyUntranslated(text, retried)) {
+                            return AutoDetectResult(retried, detected)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Logger.e("번역 실패 감지 후 ML Kit 재시도도 실패, 1차 결과 유지", e)
+                    }
+                }
+
+                return result
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e("Cloud Translation 자동감지 실패, ML Kit으로 폴백", e)
+                if (e is GoogleTranslateException.QuotaExceeded || e is GoogleTranslateException.Forbidden) {
+                    onQuotaOrAccessIssue(e as GoogleTranslateException)
+                }
+            }
+        }
+        return mlKitFallback.translateAutoDetect(text, targetLang)
     }
 
     companion object {
