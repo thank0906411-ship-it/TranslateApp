@@ -2,13 +2,15 @@ package com.senkiro.translateapp.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.view.MenuItem
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.PopupMenu
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
@@ -188,15 +190,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupLanguageSpinners() {
-        // 커스텀 레이아웃(item_spinner_selected/dropdown, textColorPrimary 명시)으로
-        // 다크모드 글자색 문제를 고치려 했으나, 실기기에서 드롭다운 자체가 아예 표시되지
-        // 않는 심각한 회귀가 발생해 v18까지 검증됐던 표준 리소스로 롤백했다. 다크모드에서
-        // 텍스트 색이 흐릿하게 보일 수 있는 문제는 남아있지만, 최소한 번역 기능은
-        // 확실하게 동작해야 하므로 이 리소스를 우선한다.
-        val adapter =
-            ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, SupportedLanguages.ALL).also {
-                it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        // v19에서 android.R.layout.simple_spinner_dropdown_item(다크모드 색상 미대응)을
+        // 커스텀 레이아웃(TextView 리소스 통째 교체)으로 바꿔 다크모드 글자색을 고치려
+        // 했으나, 실기기에서 드롭다운 자체가 아예 표시되지 않는 심각한 회귀가 발생해
+        // 표준 리소스로 롤백했다(v22). 이번엔 레이아웃 리소스 자체는 검증된 표준값을
+        // 그대로 두고, ArrayAdapter.getView/getDropDownView가 반환한 뷰의 텍스트 색만
+        // 코드로 강제 지정하는 방식으로 다시 시도한다 — 레이아웃 인플레이트 방식이
+        // 전혀 바뀌지 않으므로 v19 회귀의 원인(추정)과는 다른 접근이다. 다만 이 영역은
+        // 이미 한 번 실기기 회귀가 난 적이 있으므로, 배포 전 반드시 실기기에서 스피너가
+        // 정상적으로 열리고 항목 선택이 되는지 확인해야 한다.
+        val adapter = object : ArrayAdapter<LanguageOption>(
+            this, android.R.layout.simple_spinner_dropdown_item, SupportedLanguages.ALL
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                tintSpinnerText(view)
+                return view
             }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = super.getDropDownView(position, convertView, parent)
+                tintSpinnerText(view)
+                return view
+            }
+        }
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 
         binding.spinnerSourceLang.adapter = adapter
         binding.spinnerSourceLang.setSelection(SupportedLanguages.ALL.indexOf(SupportedLanguages.DEFAULT_SOURCE))
@@ -214,6 +232,32 @@ class MainActivity : AppCompatActivity() {
         // DEFAULT_TARGET으로 설정되어 있으므로 여기서 다시 바꿀 필요는 없다.
         binding.textTargetLangFixed.text =
             getString(R.string.arrow_to, SupportedLanguages.DEFAULT_TARGET.displayName)
+    }
+
+    /**
+     * android.R.layout.simple_spinner_dropdown_item으로 인플레이트된 뷰(루트 자체가
+     * TextView)는 다크모드 색상 체계를 따르지 않고 라이트 테마 기준 어두운 텍스트 색을
+     * 고정으로 써서, 다크모드에서 어두운 배경에 어두운 글자가 겹쳐 잘 안 보인다.
+     * 레이아웃 리소스 자체는 바꾸지 않고(v19 회귀 원인으로 추정되는 부분), 이미
+     * 인플레이트된 뷰의 텍스트 색만 테마의 textColorPrimary로 강제 지정한다.
+     */
+    private fun tintSpinnerText(view: View) {
+        (view as? TextView)?.setTextColor(themeTextColorPrimary)
+    }
+
+    /**
+     * 현재 테마(다크/라이트)의 ?android:attr/textColorPrimary 색상값을 읽어온다.
+     * 값을 매번 다시 계산할 필요는 없지만, 다크모드 전환 시 Activity가 재생성되므로
+     * lazy로 한 번만 계산해도 안전하다(재생성 시 이 프로퍼티도 새로 초기화됨).
+     */
+    private val themeTextColorPrimary: Int by lazy {
+        val typedValue = android.util.TypedValue()
+        theme.resolveAttribute(android.R.attr.textColorPrimary, typedValue, true)
+        if (typedValue.resourceId != 0) {
+            androidx.core.content.ContextCompat.getColor(this, typedValue.resourceId)
+        } else {
+            typedValue.data
+        }
     }
 
     /**
