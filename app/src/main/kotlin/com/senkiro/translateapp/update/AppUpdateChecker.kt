@@ -71,7 +71,11 @@ class AppUpdateChecker(private val context: Context) {
     private fun parseRelease(body: String): UpdateInfo {
         val json = JSONObject(body)
         val tagName = json.getString("tag_name")
-        val versionCode = tagName.filter { it.isDigit() }.toIntOrNull()
+        // /releases/latest는 pre-release를 자동으로 제외하므로 정상 경로에서는 베타
+        // 태그(예: "v34-beta1")가 여기 도달하지 않지만, 혹시라도 도달하면 하이픈 뒷부분의
+        // 숫자(베타 번호)까지 붙여버려 잘못된 versionCode가 나올 수 있다(release.yml의
+        // "Verify tag matches versionCode" 스텝과 동일하게 하이픈 앞부분만 사용해 방지).
+        val versionCode = tagName.substringBefore('-').filter { it.isDigit() }.toIntOrNull()
             ?: throw IOException("태그 이름에서 버전 코드를 읽지 못했습니다: $tagName")
 
         val assets = json.getJSONArray("assets")

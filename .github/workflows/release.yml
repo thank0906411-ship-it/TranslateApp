@@ -106,9 +106,24 @@ jobs:
         # 릴리스의 body를 그대로 보여주므로, 커밋 본문 전체(배경/이유 설명 포함)를
         # 넣으면 사용자 입장에서 너무 길다 — 직전 태그 이후의 커밋 제목(첫 줄)만
         # 모아 간단한 불릿 목록으로 채운다.
+        #
+        # "직전 태그"를 찾을 때 정식 태그(하이픈 없음)와 베타 태그(하이픈 있음)를
+        # 구분한다 — 안 그러면 예를 들어 v36을 정식 배포할 때 git describe가 바로
+        # 앞의 v36-beta2를 "직전 태그"로 잡아버려, 베타 단계(v35 이후 v36-beta1/beta2)에
+        # 있었던 실제 기능 변경 커밋들이 정식 릴리스 노트에서 통째로 누락된다
+        # (v36에서 실제로 이 문제가 발생해 발견함). 정식 태그를 만들 때는 다른 정식
+        # 태그만, 베타 태그를 만들 때는(직전 베타/정식 상관없이) 아무 태그나 기준으로 삼는다.
         id: notes
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            MATCH_PATTERN="v*"
+          else
+            MATCH_PATTERN="v*[0-9]"
+          fi
+          PREV_TAG=$(git describe --tags --abbrev=0 --match "$MATCH_PATTERN" --exclude '*-*' "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ] && [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          fi
           if [ -z "$PREV_TAG" ]; then
             RANGE="${GITHUB_REF_NAME}"
           else

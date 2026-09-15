@@ -14,7 +14,6 @@
     <string name="update_download_failed">업데이트 다운로드에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.</string>
     <string name="cloud_translate_quota_exceeded">Cloud Translation 요청이 많아 잠시 온디바이스 번역(ML Kit)으로 전환됩니다.</string>
     <string name="cloud_translate_forbidden">Cloud Translation API 키에 문제가 있어 온디바이스 번역(ML Kit)으로 전환됩니다. 키/결제 계정을 확인해주세요.</string>
-    <string name="btn_glossary">용어집</string>
     <string name="glossary_dialog_title">용어집 관리</string>
     <string name="glossary_hint_source">원문 용어</string>
     <string name="glossary_hint_target">고정 번역어</string>
@@ -25,7 +24,6 @@
     <string name="btn_history">기록</string>
     <string name="history_dialog_title">최근 방문 / 즐겨찾기</string>
     <string name="translation_failed_notice">일부 문장이 번역되지 않았을 수 있습니다.</string>
-    <string name="btn_llm_settings">LLM 설정</string>
     <string name="llm_settings_title">LLM 문맥 후처리 설정</string>
     <string name="llm_settings_description">API 키를 입력하면 번역 결과를 페이지 문맥과 함께 더 자연스럽게 다듬어줍니다. 키가 없어도 앱은 정상 동작하며, Claude 키가 있으면 Claude를 우선 사용합니다. 키는 이 기기에만 저장되며 다른 곳으로 전송되지 않습니다.</string>
     <string name="llm_settings_claude_label">Claude API 키 (Anthropic)</string>
