@@ -74,11 +74,14 @@ class GlossaryDialog(
             errorMessage = "용어집 내보내기 실패",
             onError = { Toast.makeText(activity, R.string.glossary_export_failed, Toast.LENGTH_LONG).show() }
         ) {
-            val json = withContext(Dispatchers.IO) { glossary.exportToJson() }
-            if (json == "[]") {
+            // "[]" 문자열 비교 대신 실제 목록으로 비어있는지 판단한다 — JSONArray의
+            // pretty-print 출력 형식(들여쓰기 등)에 우연히 의존하지 않기 위함이다.
+            val isEmpty = withContext(Dispatchers.IO) { glossary.getAll().isEmpty() }
+            if (isEmpty) {
                 Toast.makeText(activity, R.string.glossary_export_empty, Toast.LENGTH_SHORT).show()
                 return@launchSafely
             }
+            val json = withContext(Dispatchers.IO) { glossary.exportToJson() }
 
             val file = withContext(Dispatchers.IO) {
                 val exportDir = File(activity.cacheDir, "exports").apply { mkdirs() }
