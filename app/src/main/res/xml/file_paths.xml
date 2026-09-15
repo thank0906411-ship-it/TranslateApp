@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-files-path name="downloads" path="Download/" />
+    <!-- 용어집 내보내기가 File(cacheDir, "exports")에 임시 파일을 만들어 공유하기
+         시트로 넘긴다 — cacheDir은 이 cache-path 선언이 있어야 FileProvider로 노출된다. -->
+    <cache-path name="exports" path="exports/" />
 </paths>

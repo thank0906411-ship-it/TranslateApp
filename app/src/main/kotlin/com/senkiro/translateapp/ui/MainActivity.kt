@@ -13,6 +13,8 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -80,6 +82,36 @@ class MainActivity : AppCompatActivity() {
 
     /** 현재 페이지에서 이미 번역 실패 안내를 했는지 — 페이지 로드당 1회만 알린다. */
     private var hasWarnedAboutTranslationFailureOnThisPage = false
+
+    /** 용어집 다이얼로그가 열려 있는 동안만 유효 — 가져오기 파일 선택 결과를 그 인스턴스에 전달하기 위해 참조를 들고 있는다. */
+    private var openGlossaryDialog: GlossaryDialog? = null
+
+    /**
+     * 용어집 JSON 가져오기용 파일 선택기. ActivityResultLauncher는 onCreate 이전
+     * (Activity가 STARTED 상태가 되기 전)에 등록해야 하므로 필드 초기화 시점에 바로 건다
+     * — onClick 안에서 매번 새로 등록하려 하면 IllegalStateException이 발생한다.
+     */
+    private val importGlossaryLauncher: ActivityResultLauncher<Array<String>> =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            lifecycleScope.launch {
+                try {
+                    val jsonText = withContext(Dispatchers.IO) {
+                        contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    }
+                    if (jsonText != null) {
+                        openGlossaryDialog?.importFromUri(jsonText)
+                    } else {
+                        Toast.makeText(this@MainActivity, R.string.glossary_import_failed, Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e("용어집 가져오기 파일 읽기 실패", e)
+                    Toast.makeText(this@MainActivity, R.string.glossary_import_failed, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -173,7 +205,10 @@ class MainActivity : AppCompatActivity() {
             llmPostProcessor = postProcessor,
             onLanguageDetected = { htmlLang -> runOnUiThread { applyDetectedSourceLang(htmlLang) } },
             usageTracker = usageTracker,
-            onTranslationFailedDetected = { runOnUiThread { warnAboutTranslationFailure() } }
+            onTranslationFailedDetected = { runOnUiThread { warnAboutTranslationFailure() } },
+            onShowOriginalText = { originalText ->
+                runOnUiThread { Toast.makeText(this, originalText, Toast.LENGTH_LONG).show() }
+            }
         )
 
         webView.webViewClient = object : WebViewClient() {
@@ -307,14 +342,20 @@ class MainActivity : AppCompatActivity() {
 
     /** 용어집(원문 용어 -> 고정 번역어) 추가/삭제 다이얼로그. 닫으면 PageTranslator가 즉시 재적용한다. */
     private fun showGlossaryDialog() {
-        GlossaryDialog(
+        val dialog = GlossaryDialog(
             activity = this,
             glossary = glossary,
             scope = lifecycleScope,
             onGlossaryChanged = {
                 lifecycleScope.launch(Dispatchers.IO) { pageTranslator.reloadGlossary() }
-            }
-        ).show()
+            },
+            // 일부 파일 관리자가 .json 파일의 MIME 타입을 application/json이 아니라
+            // text/plain 등으로 잘못 보고하는 경우가 있어, "*/*"로 넓게 허용한다(어차피
+            // GlossaryDialog.importFromUri가 JSON 파싱 실패를 안전하게 처리한다).
+            onImportRequested = { importGlossaryLauncher.launch(arrayOf("*/*")) }
+        )
+        openGlossaryDialog = dialog
+        dialog.show()
     }
 
     /** 최근 방문/즐겨찾기 목록 다이얼로그. 항목을 누르면 그 URL로 바로 이동한다. */
@@ -339,21 +380,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 용어집/LLM 설정은 둘 다 "번역 동작 방식을 설정하는" 성격이라 상단 아이콘 버튼을
-     * 하나로 묶고, 눌렀을 때 PopupMenu로 둘 중 하나를 고르게 한다.
+     * 용어집/LLM 설정/사용량은 모두 "번역 동작을 확인·설정하는" 성격이라 상단 아이콘
+     * 버튼을 하나로 묶고, 눌렀을 때 PopupMenu로 하나를 고르게 한다.
      */
     private fun showSettingsMenu() {
         val popup = PopupMenu(this, binding.btnSettings)
         popup.menu.add(0, MENU_ITEM_GLOSSARY, 0, R.string.settings_menu_glossary)
         popup.menu.add(0, MENU_ITEM_LLM_SETTINGS, 1, R.string.settings_menu_llm)
+        popup.menu.add(0, MENU_ITEM_USAGE, 2, R.string.settings_menu_usage)
         popup.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
                 MENU_ITEM_GLOSSARY -> showGlossaryDialog()
                 MENU_ITEM_LLM_SETTINGS -> showLlmSettingsDialog()
+                MENU_ITEM_USAGE -> showUsageDialog()
             }
             true
         }
         popup.show()
+    }
+
+    /**
+     * "기록 버튼 길게 누르기" Toast는 발견성이 낮아서(문서를 안 읽으면 이 제스처를
+     * 알기 어려움) 설정 메뉴에도 같은 정보를 보여주는 경로를 추가했다. Toast 쪽은
+     * 기존 사용자가 이미 아는 방법이라 하위 호환으로 그대로 둔다.
+     */
+    private fun showUsageDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_menu_usage)
+            .setMessage(usageTracker.formatSnapshot(usageTracker.getSnapshot()))
+            .setPositiveButton(R.string.glossary_btn_close, null)
+            .show()
     }
 
     private fun loadFromInput() {
@@ -466,5 +522,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val MENU_ITEM_GLOSSARY = 1
         private const val MENU_ITEM_LLM_SETTINGS = 2
+        private const val MENU_ITEM_USAGE = 3
     }
 }

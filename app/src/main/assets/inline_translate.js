@@ -172,6 +172,45 @@
     return parts;
   }
 
+  // 번역 완료된 블록을 길게 누르면(500ms) 원문을 Kotlin에 넘겨 Toast로 보여준다.
+  // 인터랙티브 요소(링크/버튼 등)가 있는 블록은 제외한다 — 모바일 브라우저는 롱프레스를
+  // 링크 컨텍스트 메뉴(새 탭에서 열기 등)로도 쓰므로, 여기서 리스너를 추가하면 그 기본
+  // 동작과 충돌하거나 사용자가 의도치 않게 원문 팝업을 보게 될 수 있다.
+  var LONG_PRESS_MS = 500;
+
+  function attachOriginalTextLongPress(el, originalText) {
+    if (hasInteractiveDescendant(el)) return;
+    el.setAttribute('data-tapp-original', originalText);
+
+    // 재시도(retryBlock) 성공 시 같은 블록에 tappApplyTranslations가 다시 호출될 수
+    // 있다 — data-tapp-original 값은 새로 갱신해야 하지만(위에서 이미 함), 리스너는
+    // 한 번만 달면 충분하므로 매번 새 클로저로 addEventListener가 중복 등록되는 것을
+    // 이 플래그로 막는다(안 막으면 롱프레스 한 번에 Toast가 여러 번 뜨게 된다).
+    if (el.hasAttribute('data-tapp-longpress-bound')) return;
+    el.setAttribute('data-tapp-longpress-bound', '1');
+
+    var pressTimer = null;
+    var start = function () {
+      pressTimer = setTimeout(function () {
+        pressTimer = null;
+        if (window.TranslateAppBridge && window.TranslateAppBridge.onShowOriginalText) {
+          window.TranslateAppBridge.onShowOriginalText(el.getAttribute('data-tapp-original') || '');
+        }
+      }, LONG_PRESS_MS);
+    };
+    var cancel = function () {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    };
+
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchend', cancel);
+    el.addEventListener('touchmove', cancel);
+    el.addEventListener('touchcancel', cancel);
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mouseup', cancel);
+    el.addEventListener('mouseleave', cancel);
+  }
+
   // Kotlin이 번역 완료 후 { "tapp-0": "번역문", ... } 형태의 JSON을 넘기면 해당
   // 블록에 번역문을 적용한다. 인터랙티브 요소가 없는 블록은 기존처럼 textContent를
   // 통째로 치환하고(가장 단순하고 확실함), 인터랙티브 요소가 있는 블록은 자식 구조를
@@ -182,6 +221,11 @@
     Object.keys(map).forEach(function (id) {
       var el = refs[id];
       if (!el) return;
+
+      // 원문은 textContent를 치환하기 전(지금)만 읽을 수 있다 — 롱프레스 시점에는
+      // 이미 번역문으로 바뀐 뒤라 다시 꺼낼 수 없으므로 지금 속성으로 저장해둔다.
+      var originalText = el.textContent;
+      attachOriginalTextLongPress(el, originalText);
 
       if (!hasInteractiveDescendant(el)) {
         el.textContent = map[id];

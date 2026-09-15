@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * 사용자가 등록한 "원문 용어 -> 고정 번역어" 매핑 하나를 담는다.
@@ -74,5 +76,43 @@ class Glossary(context: Context) {
 
     suspend fun delete(term: GlossaryTerm) {
         dao.delete(term.key)
+    }
+
+    /**
+     * 전체 용어집을 JSON 배열 문자열로 내보낸다. key(소문자 정규화값)는 sourceTerm에서
+     * 항상 재계산 가능하므로 내보내지 않는다 — 다른 기기/버전으로 옮길 때 굳이 옛
+     * 정규화 규칙에 묶이지 않고 가져오기 시점의 [upsert] 규칙을 그대로 타게 하기 위함이다.
+     */
+    suspend fun exportToJson(): String {
+        val array = JSONArray()
+        getAll().forEach { term ->
+            array.put(
+                JSONObject().apply {
+                    put("sourceTerm", term.sourceTerm)
+                    put("targetTerm", term.targetTerm)
+                }
+            )
+        }
+        return array.toString(2)
+    }
+
+    /**
+     * JSON 배열 문자열에서 용어집을 가져와 병합한다(기존 항목을 지우지 않음 — 같은
+     * sourceTerm이 있으면 upsert 규칙에 따라 갱신됨). 개별 항목이 형식에 안 맞으면
+     * (sourceTerm/targetTerm 누락 등) 그 항목만 건너뛰고 계속 진행한다 — 파일 일부가
+     * 깨졌다고 가져오기 전체를 실패시키면 정상인 나머지 항목까지 못 쓰게 되기 때문이다.
+     * @return 실제로 가져온(성공적으로 upsert된) 항목 수.
+     */
+    suspend fun importFromJson(json: String): Int {
+        val array = JSONArray(json)
+        var count = 0
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            val sourceTerm = obj.optString("sourceTerm").takeIf { it.isNotBlank() } ?: continue
+            val targetTerm = obj.optString("targetTerm").takeIf { it.isNotBlank() } ?: continue
+            upsert(sourceTerm, targetTerm)
+            count++
+        }
+        return count
     }
 }

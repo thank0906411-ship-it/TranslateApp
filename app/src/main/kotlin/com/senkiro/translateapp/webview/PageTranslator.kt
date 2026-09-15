@@ -46,7 +46,9 @@ class PageTranslator(
     /** 엔진 폴백까지 시도했는데도 원문과 동일하게 남은(=번역 실패로 추정되는) 블록이
      *  한 번의 번역 배치에서 하나 이상 발견되면 호출된다. 블록마다 매번 알리면 거슬리므로
      *  호출부(MainActivity)가 페이지 로드당 1회 정도로 스스로 조절하는 것을 권장한다. */
-    private val onTranslationFailedDetected: () -> Unit = {}
+    private val onTranslationFailedDetected: () -> Unit = {},
+    /** 번역된 블록을 사용자가 길게 눌렀을 때, 그 블록의 원문 텍스트를 알려준다. */
+    private val onShowOriginalText: (String) -> Unit = {}
 ) {
 
     private val injectScript: String by lazy {
@@ -108,6 +110,12 @@ class PageTranslator(
         fun onRetryTranslation(id: String, originalText: String) {
             scope.launch { retryBlock(id, originalText) }
         }
+
+        /** 번역된 블록을 길게 눌렀을 때 그 블록의 원문을 알려준다(JS가 인터랙티브 요소가 있는 블록은 이미 걸러서 호출). */
+        @JavascriptInterface
+        fun onShowOriginalText(originalText: String) {
+            onShowOriginalText.invoke(originalText)
+        }
     }
 
     /**
@@ -120,7 +128,10 @@ class PageTranslator(
         try {
             val (translated, effectiveSourceLang) = withContext(Dispatchers.IO) {
                 if (!isAutoDetect) engine.prepareModel(sourceLang, targetLang)
-                translateWithEffectiveLang(originalText)
+                // useTranslationCache=false — 재시도인데 (이전 실패가 그대로 캐시돼
+                // 있어서) 캐시 히트로 같은 실패 결과를 다시 돌려주면 재시도의 의미가
+                // 없어진다. 언어 감지 캐시는 실패와 무관하므로 계속 재사용한다.
+                translateWithEffectiveLang(originalText, useTranslationCache = false)
             }
             cache.put(originalText, effectiveSourceLang, targetLang, translated)
 
@@ -157,13 +168,51 @@ class PageTranslator(
      * 자동 감지 모드에서는 블록마다 실제 언어가 다를 수 있으므로, 고정된 sourceLang
      * 대신 이 결과를 캐시 키와 "번역 실패" 판정에 써야 한다. 감지에 실패하면 캐시 오염을
      * 피하기 위해 "auto"를 그대로 키로 쓴다(다음에도 같은 문장이면 다시 감지를 시도하게 됨).
+     *
+     * 자동 감지 모드는 [TranslationCache.getDetectedLang]로 "이 텍스트가 이전에 어떤
+     * 언어로 판별됐는지" 항상 먼저 확인한다 — 캐시 히트면 언어 감지 API 호출(ML Kit 추론
+     * 또는 Cloud Translation의 감지 겸용 호출) 자체를 건너뛰고 곧장 일반 translate()로
+     * 넘어간다. 같은 다국어 페이지를 재방문할 때마다 매번 새로 감지하던 비용을 줄이기
+     * 위함이다.
+     *
+     * @param useTranslationCache 감지된 언어로 [TranslationCache.get]/[put](번역 결과
+     *   자체)까지 재사용/저장할지. 용어집이 적용된 호출부(originalText가 아니라
+     *   플레이스홀더 치환된 텍스트를 넘기는 경우)는 항상 false로 호출해야 한다 — 캐시에
+     *   저장된 결과가 플레이스홀더(⟦0⟧)를 담고 있으면, 나중에 용어집이 바뀌었을 때 옛
+     *   치환 결과와 새 복원 매핑이 어긋나는 문제가 재발하기 때문이다(언어 감지 캐시는
+     *   용어집과 무관하므로 이 경우에도 그대로 재사용해 감지 비용만 아낀다).
      */
-    private suspend fun translateWithEffectiveLang(text: String): Pair<String, String> {
+    private suspend fun translateWithEffectiveLang(
+        text: String,
+        useTranslationCache: Boolean = true
+    ): Pair<String, String> {
         if (!isAutoDetect) {
             return engine.translate(text, sourceLang, targetLang) to sourceLang
         }
+
+        val cachedDetection = cache.getDetectedLang(text)
+        if (cachedDetection != null) {
+            if (cachedDetection == targetLang) {
+                // 이전에도 이미 도착어로 판별됐던 텍스트 — 번역 호출 자체가 불필요하다.
+                return text to cachedDetection
+            }
+            if (useTranslationCache) {
+                cache.get(text, cachedDetection, targetLang)?.let { return it to cachedDetection }
+            }
+            val translated = engine.translate(text, cachedDetection, targetLang)
+            if (useTranslationCache) cache.put(text, cachedDetection, targetLang, translated)
+            return translated to cachedDetection
+        }
+
         val result = engine.translateAutoDetect(text, targetLang)
-        return result.translatedText to (result.detectedSourceLang ?: SupportedLanguages.AUTO_DETECT_CODE)
+        val detected = result.detectedSourceLang
+        if (detected != null) {
+            cache.putDetectedLang(text, detected)
+            if (useTranslationCache && detected != targetLang) {
+                cache.put(text, detected, targetLang, result.translatedText)
+            }
+        }
+        return result.translatedText to (detected ?: SupportedLanguages.AUTO_DETECT_CODE)
     }
 
     /** JS의 tappMarkTranslationFailed를 호출해 블록에 실패 표시를 달거나 갱신한다. Dispatchers.Main에서 호출할 것. */
@@ -210,9 +259,11 @@ class PageTranslator(
                     val (textToTranslate, placeholders) = applier.applyPlaceholders(originalText)
 
                     if (placeholders.isEmpty()) {
-                        // 자동 감지 모드는 캐시를 건너뛴다 — 실제 언어를 미리 모르는 채로는
-                        // 올바른 캐시 키를 만들 수 없고, 페이지 안에 언어가 섞여 있는 상황
-                        // 자체가 흔치 않아 매번 새로 감지+번역해도 부담이 크지 않다.
+                        // 일반 모드는 여기서 직접 번역 캐시를 조회/저장한다(sourceLang이
+                        // 고정돼 있어 캐시 키를 바로 만들 수 있음). 자동 감지 모드는 실제
+                        // 언어를 미리 모르는 채로는 이 바깥쪽 캐시 키를 만들 수 없으므로
+                        // 건너뛰고, translateWithEffectiveLang이 내부적으로 감지 캐시 →
+                        // (감지되면) 번역 캐시 순으로 알아서 재사용/저장한다.
                         val cached = if (isAutoDetect) null else cache.get(originalText, sourceLang, targetLang)
                         if (cached != null) {
                             idToTranslated[id] = cached
@@ -232,18 +283,21 @@ class PageTranslator(
                             }
                         }
                     } else {
-                        // 용어집이 적용된 블록은 캐시를 쓰지 않고 항상 새로 번역한다. 플레이스홀더가
-                        // 적용된 결과를 캐시하면, 나중에 용어집이 바뀌었을 때 캐시된 옛 치환
-                        // 결과와 새 복원 매핑이 어긋날 수 있어 정확성을 우선해 캐시를 건너뛴다.
-                        // LLM 후처리 대상에서도 제외한다 — 후처리가 고정 번역어를 다시 바꿔버릴 수 있다.
-                        val (translated, effectiveSourceLang) = translateWithEffectiveLang(textToTranslate)
+                        // 용어집이 적용된 블록은 번역 결과 캐시를 쓰지 않고 항상 새로 번역한다.
+                        // 플레이스홀더(⟦0⟧)가 적용된 결과를 캐시하면, 나중에 용어집이 바뀌었을 때
+                        // 캐시된 옛 치환 결과와 새 복원 매핑이 어긋날 수 있어 정확성을 우선해
+                        // useTranslationCache=false로 호출한다(언어 감지 캐시는 용어집과 무관하므로
+                        // 계속 재사용해 감지 비용만 아낀다). LLM 후처리 대상에서도 제외한다 —
+                        // 후처리가 고정 번역어를 다시 바꿔버릴 수 있다.
+                        val (translated, effectiveSourceLang) =
+                            translateWithEffectiveLang(textToTranslate, useTranslationCache = false)
                         if (isAutoDetect) idToEffectiveSourceLang[id] = effectiveSourceLang
                         val restored = applier.restorePlaceholders(translated, placeholders)
                         idToTranslated[id] = restored
                             // 번역기가 플레이스홀더 기호를 변형해 복원에 실패하면(드묾),
                             // "⟦0⟧"이 그대로 노출되는 것보다는 용어집 없이 원문을 다시
                             // 번역한 결과를 보여주는 편이 훨씬 안전하다.
-                            ?: translateWithEffectiveLang(originalText).first
+                            ?: translateWithEffectiveLang(originalText, useTranslationCache = false).first
                     }
                 }
 
