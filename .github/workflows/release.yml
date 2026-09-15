@@ -27,7 +27,14 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
+        # android-actions/setup-android@v3의 기본 packages 값(platform-tools 포함)에
+        # 있던 "tools" 패키지가 Google 저장소 인덱스에서 이미 제거된 레거시 패키지라
+        # sdkmanager가 "Warning: Failed to find package 'tools'"로 실패했다(2026-09-15
+        # v37-beta1 배포 시 발견 — 코드 변경과 무관한 CI 환경 문제). 빌드에 필요한
+        # platform-tools만 명시해 이 레거시 패키지를 요청하지 않도록 한다.
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
