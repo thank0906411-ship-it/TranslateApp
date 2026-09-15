@@ -138,9 +138,12 @@ OPENAI_API_KEY=본인의_OpenAI_API_키
 - `webview` — `PageTranslator`: WebView가 페이지 로드를 마칠 때마다(`onPageFinished`)
   `assets/inline_translate.js`를 주입해 블록 단위 텍스트를 수집하고, 번역 결과를 같은
   자리에 다시 심어 넣는다(JS `JavascriptInterface` 브리지로 Kotlin ↔ JS 통신).
-- `translation` — 번역 엔진 인터페이스:
-  - `MLKitTranslator` — Google ML Kit 온디바이스 번역 (완전 오프라인, 무료, 항상 동작)
-  - `GoogleTranslateEngine` — Google Cloud Translation API (서버급 신경망 모델)
+- `translation` — 번역 엔진 인터페이스(`TranslationEngine`)는 `translate(source
+  고정)`와 `translateAutoDetect(source 미지정)` 두 경로를 제공한다:
+  - `MLKitTranslator` — Google ML Kit 온디바이스 번역 (완전 오프라인, 무료, 항상 동작).
+    자동 감지는 별도 `language-id` 모델로 먼저 언어를 판별한 뒤 번역한다.
+  - `GoogleTranslateEngine` — Google Cloud Translation API (서버급 신경망 모델).
+    자동 감지는 API의 `source` 파라미터를 생략해 감지+번역을 한 번의 호출로 처리한다.
   - `FallbackTranslator` — 위 둘을 감싸서, API 키가 있으면 Cloud Translation을 먼저
     쓰고 없거나 실패하면 자동으로 ML Kit으로 전환한다.
   - `ClaudePostProcessor` / `GptPostProcessor` — LLM 문맥 후처리 (OkHttp로 REST API
